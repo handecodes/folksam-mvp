@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Folksam AI Investment Analysis — MVP</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e2e5ea;
+    --text: #1c2026;
+    --muted: #6b7280;
+    --accent: #2f5fd6;
+    --good: #1e8e5a;
+    --mid: #b8860b;
+    --low: #b3401f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem 1rem 4rem;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .sub { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.95rem; }
+  textarea {
+    width: 100%;
+    min-height: 160px;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    resize: vertical;
+  }
+  button {
+    margin-top: 0.75rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  #status { margin-top: 0.75rem; color: var(--muted); font-size: 0.9rem; }
+  .error { color: var(--low); }
+  .mock-banner {
+    background: #fbf1dc;
+    color: #6b4c00;
+    border: 1px solid #e8cf94;
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+
+  .results { margin-top: 2rem; display: none; }
+  .overall {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .overall h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+  .overall .score { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  .overall p { color: var(--muted); font-size: 0.9rem; margin: 0.4rem 0 0; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+  .cat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+  }
+  .cat-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .cat-name { font-weight: 600; font-size: 0.95rem; }
+  .cat-score { font-weight: 700; color: var(--accent); }
+  .bar { height: 6px; background: var(--border); border-radius: 3px; margin: 0.4rem 0 0.5rem; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); }
+  .cat-reason { font-size: 0.88rem; color: var(--text); margin: 0; }
+  .citations { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+  .citations li { font-size: 0.78rem; margin-top: 0.2rem; }
+  .citations a { color: var(--accent); text-decoration: none; }
+  .citations a:hover { text-decoration: underline; }
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    margin-top: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .badge.high { background: #e3f5ec; color: var(--good); }
+  .badge.medium { background: #fbf1dc; color: var(--mid); }
+  .badge.low { background: #fbe6e0; color: var(--low); }
+
+  .missing {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin-top: 0.75rem;
+  }
+  .missing h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+  .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; color: var(--text); }
+  .missing p.none { color: var(--muted); font-size: 0.88rem; margin: 0; }
+  .missing li { margin-bottom: 0.6rem; }
+  .gap-actions { margin-top: 0.3rem; }
+  .gap-actions button {
+    margin: 0.3rem 0.4rem 0 0;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+    background: var(--border);
+    color: var(--text);
+  }
+  .gap-answer-box { margin-top: 0.4rem; display: none; }
+  .gap-answer-box textarea { min-height: 50px; font-size: 0.85rem; }
+  .gap-result {
+    margin-top: 0.4rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    background: #eef1fb;
+    font-size: 0.82rem;
+    display: none;
+  }
+  .gap-result .assumption { font-style: italic; color: var(--muted); margin-bottom: 0.3rem; }
+  .gap-result .change { margin-top: 0.2rem; }
+
+  .cost-row { display: flex; gap: 0.75rem; align-items: baseline; margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+  .cost-tier { font-weight: 700; }
+  .cost-reason { color: var(--muted); font-size: 0.85rem; }
+  .priority-note { color: var(--muted); font-size: 0.82rem; margin-top: 0.3rem; }
+
+  .debate {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin-top: 0.75rem;
+    display: none;
+  }
+  .debate h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  .debate .target { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.5rem; }
+  .debate .question { font-size: 0.92rem; margin-bottom: 0.6rem; }
+  .debate textarea { min-height: 80px; }
+  .debate .outcome {
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    display: none;
+  }
+  .debate .outcome.changed { background: #e3f5ec; }
+  .debate .outcome.unchanged { background: #f1f2f4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI Investment Analysis — MVP</h1>
+  <p class="sub">Paste an AI investment case description below. This gives a structured, reasoned starting point for discussion, not a final answer.</p>
+
+  <div class="mock-banner" id="mockBanner">No OpenRouter key set — this is running in mock mode with fake data. Add OPENROUTER_API_KEY to .env for real scoring.</div>
+
+  <textarea id="caseInput" placeholder="Describe the AI investment case: what it should do, what resources/costs it needs, what data or skills are required..."></textarea>
+  <br />
+  <button id="submitBtn">Evaluate case</button>
+  <div id="status"></div>
+
+  <div class="results" id="results">
+    <div class="overall">
+      <h2>Priority score</h2>
+      <div class="score" id="overallScore">-</div>
+      <p class="priority-note" id="priorityNote"></p>
+      <p id="summary"></p>
+      <div class="cost-row">
+        <span>Estimated cost:</span>
+        <span class="cost-tier" id="costTier">-</span>
+        <span class="cost-reason" id="costReason"></span>
+      </div>
+    </div>
+
+    <div class="grid" id="categoryGrid"></div>
+
+    <div class="missing">
+      <h3>What's missing from this case</h3>
+      <div id="missingInfo"></div>
+    </div>
+
+    <div class="debate" id="debateBox">
+      <h3>The committee pushes back</h3>
+      <div class="target" id="debateTarget"></div>
+      <div class="question" id="debateQuestion"></div>
+      <textarea id="debateDefense" placeholder="Your response..."></textarea>
+      <br />
+      <button id="debateSubmit">Respond</button>
+      <div class="outcome" id="debateOutcome"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const btn = document.getElementById("submitBtn");
+  const input = document.getElementById("caseInput");
+  const statusEl = document.getElementById("status");
+  const results = document.getElementById("results");
+  const overallScore = document.getElementById("overallScore");
+  const summary = document.getElementById("summary");
+  const categoryGrid = document.getElementById("categoryGrid");
+  const missingInfo = document.getElementById("missingInfo");
+  const mockBanner = document.getElementById("mockBanner");
+  const costTierEl = document.getElementById("costTier");
+  const costReasonEl = document.getElementById("costReason");
+  const priorityNote = document.getElementById("priorityNote");
+  const debateBox = document.getElementById("debateBox");
+  const debateTarget = document.getElementById("debateTarget");
+  const debateQuestion = document.getElementById("debateQuestion");
+  const debateDefense = document.getElementById("debateDefense");
+  const debateSubmit = document.getElementById("debateSubmit");
+  const debateOutcome = document.getElementById("debateOutcome");
+
+  // Mirrors the server's COST_MULTIPLIERS so the priority score can be recomputed
+  // client-side after a debate changes a category score, without another round trip.
+  const COST_MULTIPLIERS = { 1: 1.3, 2: 1.15, 3: 1.0, 4: 0.85, 5: 0.7 };
+  function computePriorityScore(categories, costTier) {
+    const scores = Object.values(categories).map((c) => c.score);
+    const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+    const priority = avg * (COST_MULTIPLIERS[costTier] ?? 1.0);
+    return Math.round(Math.min(5, Math.max(0.5, priority)) * 10) / 10;
+  }
+
+  // State kept around for the debate flow.
+  let currentCaseText = "";
+  let currentResult = null;
+  let currentCategoriesMeta = [];
+  let debateTargetId = null;
+
+  // Check mode on load so the banner shows up even before the first evaluate call.
+  fetch("/api/health")
+    .then((r) => r.json())
+    .then((h) => { if (h.mode === "mock") mockBanner.style.display = "block"; })
+    .catch(() => {});
+
+  function confidenceClass(c) {
+    if (c === "high") return "high";
+    if (c === "medium") return "medium";
+    return "low";
+  }
+
+  function renderCategories(categoriesMeta, scores) {
+    categoryGrid.innerHTML = "";
+    categoriesMeta.forEach((meta) => {
+      const data = scores[meta.id];
+      if (!data) return;
+      const card = document.createElement("div");
+      card.className = "cat-card";
+      card.dataset.categoryId = meta.id;
+      const citations = Array.isArray(data.citations) ? data.citations : [];
+      const citationsHtml = citations.length
+        ? `<ul class="citations">${citations
+            .map((c) => `<li><a href="${c.url}" target="_blank" rel="noopener">${c.title || c.url}</a></li>`)
+            .join("")}</ul>`
+        : "";
+      card.innerHTML = `
+        <div class="cat-head">
+          <span class="cat-name">${meta.swedish}</span>
+          <span class="cat-score" data-role="score">${data.score}/5</span>
+        </div>
+        <div class="bar"><div class="bar-fill" data-role="bar" style="width:${(data.score / 5) * 100}%"></div></div>
+        <p class="cat-reason" data-role="reason">${data.reasoning || ""}</p>
+        <span class="badge ${confidenceClass(data.confidence)}">${data.confidence || "unknown"} confidence</span>
+        ${citationsHtml}
+      `;
+      categoryGrid.appendChild(card);
+    });
+  }
+
+  function renderMissing(list) {
+    if (!list || list.length === 0) {
+      missingInfo.innerHTML = '<p class="none">Nothing flagged, the case description looks reasonably complete.</p>';
+      return;
+    }
+    const ul = document.createElement("ul");
+    list.forEach((item, i) => {
+      const li = document.createElement("li");
+      const gapId = `gap-${i}`;
+      li.innerHTML = `
+        ${item}
+        <div class="gap-actions">
+          <button type="button" data-gap-action="assume" data-gap-id="${gapId}">See AI's best guess</button>
+          <button type="button" data-gap-action="ask" data-gap-id="${gapId}">Answer it myself</button>
+        </div>
+        <div class="gap-answer-box" id="${gapId}-answer">
+          <textarea placeholder="Your answer..."></textarea>
+          <button type="button" data-gap-action="submit-answer" data-gap-id="${gapId}">Submit</button>
+        </div>
+        <div class="gap-result" id="${gapId}-result"></div>
+      `;
+      li.dataset.missingItem = item;
+      ul.appendChild(li);
+    });
+    missingInfo.innerHTML = "";
+    missingInfo.appendChild(ul);
+  }
+
+  async function runGapFill(li, missingItem, mode, answerText) {
+    const resultBox = li.querySelector(".gap-result");
+    resultBox.style.display = "block";
+    resultBox.innerHTML = "Thinking...";
+
+    try {
+      const res = await fetch("/api/fill-gap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseText: currentCaseText, missingItem, mode, answerText })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        resultBox.innerHTML = data.error || "Something went wrong.";
+        return;
+      }
+
+      const changed = data.changedCategories || {};
+      const changedIds = Object.keys(changed);
+      let html = "";
+      if (data.assumption) {
+        html += `<div class="assumption">Assumption: ${data.assumption}</div>`;
+      }
+      if (changedIds.length === 0) {
+        html += "No category's score would meaningfully change based on this.";
+      } else {
+        changedIds.forEach((id) => {
+          const meta = currentCategoriesMeta.find((m) => m.id === id);
+          const oldScore = currentResult?.categories?.[id]?.score;
+          const name = meta ? meta.swedish : id;
+          html += `<div class="change"><strong>${name}</strong>: ${oldScore != null ? oldScore + " → " : ""}${changed[id].score}/5. ${changed[id].reasoning}</div>`;
+        });
+      }
+      resultBox.innerHTML = html;
+    } catch (err) {
+      resultBox.innerHTML = "Request failed: " + err.message;
+    }
+  }
+
+  missingInfo.addEventListener("click", (e) => {
+    const btnEl = e.target.closest("button[data-gap-action]");
+    if (!btnEl) return;
+    const li = btnEl.closest("li");
+    const missingItem = li.dataset.missingItem;
+    const action = btnEl.dataset.gapAction;
+    const gapId = btnEl.dataset.gapId;
+
+    if (action === "assume") {
+      runGapFill(li, missingItem, "assume");
+    } else if (action === "ask") {
+      const box = document.getElementById(`${gapId}-answer`);
+      box.style.display = box.style.display === "block" ? "none" : "block";
+    } else if (action === "submit-answer") {
+      const box = document.getElementById(`${gapId}-answer`);
+      const answerText = box.querySelector("textarea").value.trim();
+      if (!answerText) return;
+      runGapFill(li, missingItem, "user", answerText);
+    }
+  });
+
+  btn.addEventListener("click", async () => {
+    const caseText = input.value.trim();
+    if (!caseText) {
+      statusEl.textContent = "Paste a case description first.";
+      statusEl.className = "error";
+      return;
+    }
+
+    btn.disabled = true;
+    statusEl.className = "";
+    statusEl.textContent = "Evaluating...";
+    results.style.display = "none";
+
+    try {
+      const res = await fetch("/api/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseText })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        statusEl.className = "error";
+        statusEl.textContent = data.error || "Something went wrong.";
+        return;
+      }
+
+      const result = data.result;
+      currentCaseText = caseText;
+      currentResult = result;
+      currentCategoriesMeta = data.categories;
+
+      overallScore.textContent = `${result.priorityScore} / 5`;
+      priorityNote.textContent = "Value score weighed against estimated cost, ranking indicator, not a verdict.";
+      summary.textContent = result.summary || "";
+      renderCategories(data.categories, result.categories);
+      renderMissing(result.missingInfo);
+
+      if (result.costEstimate) {
+        costTierEl.textContent = `${result.costEstimate.label || ""} (tier ${result.costEstimate.tier}/5)`;
+        costReasonEl.textContent = result.costEstimate.reasoning || "";
+      }
+
+      startDebate();
+
+      results.style.display = "block";
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.className = "error";
+      statusEl.textContent = "Request failed: " + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  function pickWeakestCategory(categories) {
+    const confidenceRank = { low: 0, medium: 1, high: 2 };
+    const entries = Object.entries(categories);
+    entries.sort((a, b) => {
+      const confDiff = (confidenceRank[a[1].confidence] ?? 1) - (confidenceRank[b[1].confidence] ?? 1);
+      if (confDiff !== 0) return confDiff;
+      return a[1].score - b[1].score;
+    });
+    return entries[0][0];
+  }
+
+  async function startDebate() {
+    if (!currentResult) return;
+    debateTargetId = pickWeakestCategory(currentResult.categories);
+    const meta = currentCategoriesMeta.find((m) => m.id === debateTargetId);
+    const cat = currentResult.categories[debateTargetId];
+
+    debateOutcome.style.display = "none";
+    debateOutcome.className = "outcome";
+    debateDefense.value = "";
+    debateTarget.textContent = `Challenging: ${meta ? meta.swedish : debateTargetId} (currently ${cat.score}/5)`;
+    debateQuestion.textContent = "Loading challenge...";
+    debateBox.style.display = "block";
+
+    try {
+      const res = await fetch("/api/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseText: currentCaseText,
+          categoryId: debateTargetId,
+          categoryScore: cat.score,
+          categoryReasoning: cat.reasoning
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        debateBox.style.display = "none";
+        return;
+      }
+      debateQuestion.textContent = data.question || "";
+    } catch (err) {
+      debateBox.style.display = "none";
+    }
+  }
+
+  debateSubmit.addEventListener("click", async () => {
+    const defense = debateDefense.value.trim();
+    if (!defense || !debateTargetId || !currentResult) return;
+
+    debateSubmit.disabled = true;
+    const cat = currentResult.categories[debateTargetId];
+
+    try {
+      const res = await fetch("/api/challenge/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caseText: currentCaseText,
+          categoryId: debateTargetId,
+          categoryScore: cat.score,
+          categoryReasoning: cat.reasoning,
+          question: debateQuestion.textContent,
+          defense
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        debateOutcome.textContent = data.error || "Something went wrong.";
+        debateOutcome.className = "outcome unchanged";
+        debateOutcome.style.display = "block";
+        return;
+      }
+
+      debateOutcome.textContent = `${data.verdictNote || ""} ${data.reasoning || ""}`.trim();
+      debateOutcome.className = data.scoreChanged ? "outcome changed" : "outcome unchanged";
+      debateOutcome.style.display = "block";
+
+      if (data.scoreChanged) {
+        cat.score = data.newScore;
+        cat.reasoning = data.reasoning || cat.reasoning;
+
+        const card = categoryGrid.querySelector(`[data-category-id="${debateTargetId}"]`);
+        if (card) {
+          card.querySelector('[data-role="score"]').textContent = `${cat.score}/5`;
+          card.querySelector('[data-role="bar"]').style.width = `${(cat.score / 5) * 100}%`;
+          card.querySelector('[data-role="reason"]').textContent = cat.reasoning;
+        }
+
+        const newPriority = computePriorityScore(currentResult.categories, currentResult.costEstimate?.tier ?? 3);
+        currentResult.priorityScore = newPriority;
+        overallScore.textContent = `${newPriority} / 5`;
+      }
+    } catch (err) {
+      debateOutcome.textContent = "Request failed: " + err.message;
+      debateOutcome.className = "outcome unchanged";
+      debateOutcome.style.display = "block";
+    } finally {
+      debateSubmit.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Example output — AI Investment Analysis</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e2e5ea;
+    --text: #1c2026;
+    --muted: #6b7280;
+    --accent: #2f5fd6;
+    --good: #1e8e5a;
+    --mid: #b8860b;
+    --low: #b3401f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem 1rem 4rem;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .sub { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.95rem; }
+  .example-tag {
+    display: inline-block;
+    background: #eef1fb;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .case-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+    white-space: pre-wrap;
+  }
+
+  .overall {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .overall h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+  .overall .score { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  .overall p { color: var(--muted); font-size: 0.9rem; margin: 0.4rem 0 0; }
+  .priority-note { color: var(--muted); font-size: 0.82rem; margin-top: 0.3rem; }
+  .cost-row { display: flex; gap: 0.75rem; align-items: baseline; margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .cost-tier { font-weight: 700; }
+  .cost-reason { color: var(--muted); font-size: 0.85rem; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+  .cat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+  }
+  .cat-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .cat-name { font-weight: 600; font-size: 0.95rem; }
+  .cat-score { font-weight: 700; color: var(--accent); }
+  .bar { height: 6px; background: var(--border); border-radius: 3px; margin: 0.4rem 0 0.5rem; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); }
+  .cat-reason { font-size: 0.88rem; color: var(--text); margin: 0; }
+  .citations { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+  .citations li { font-size: 0.78rem; margin-top: 0.2rem; }
+  .citations a { color: var(--accent); text-decoration: none; }
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    margin-top: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .badge.high { background: #e3f5ec; color: var(--good); }
+  .badge.medium { background: #fbf1dc; color: var(--mid); }
+  .badge.low { background: #fbe6e0; color: var(--low); }
+
+  .missing {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin-top: 0.75rem;
+  }
+  .missing h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+  .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; color: var(--text); }
+
+  .debate {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin-top: 0.75rem;
+  }
+  .debate h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  .debate .target { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.5rem; }
+  .debate .question { font-size: 0.92rem; margin-bottom: 0.6rem; }
+  .debate .note { color: var(--muted); font-size: 0.8rem; font-style: italic; margin-top: 0.5rem; }
+  textarea {
+    width: 100%;
+    min-height: 70px;
+    padding: 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--muted);
+    resize: none;
+  }
+  button {
+    margin-top: 0.6rem;
+    background: var(--border);
+    color: var(--muted);
+    border: none;
+    padding: 0.55rem 1.1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="example-tag">Static example, not the live app</span>
+  <h1>AI Investment Analysis</h1>
+  <p class="sub">This is what the real app renders for one case, captured here as a fixed example.</p>
+
+  <div class="case-box">We want to build an AI chatbot that answers customer questions about their home and auto insurance policies, coverage details, and claims status, available on our website and app around the clock. It would use a large language model connected to our policy database and claims system through APIs, with a fallback to a human agent for anything it can't answer confidently. Estimated build cost is around 2 million SEK for a 4-month project, plus an ongoing licensing and hosting cost of roughly 300,000 SEK per year. We don't currently have anyone on the team with production experience running a customer-facing LLM system, though our engineers have general software development background.</div>
+
+  <div class="overall">
+    <h2>Priority score</h2>
+    <div class="score">2.5 / 5</div>
+    <p class="priority-note">Value score weighed against estimated cost, a ranking indicator, not a verdict.</p>
+    <p>A moderate-cost customer service chatbot with a real efficiency upside, but the case doesn't yet show the baseline numbers to back that upside up, and the team's lack of production LLM experience is a genuine gap. Worth discussing, not worth approving on this description alone.</p>
+    <div class="cost-row">
+      <span>Estimated cost:</span>
+      <span class="cost-tier">Medium-high (tier 3/5)</span>
+      <span class="cost-reason">~2M SEK build over 4 months plus ~300k SEK/year ongoing, roughly 2.3M SEK in year one.</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="cat-card">
+      <div class="cat-head"><span class="cat-name">Effektökning</span><span class="cat-score">4/5</span></div>
+      <div class="bar"><div class="bar-fill" style="width:80%"></div></div>
+      <p class="cat-reason">24/7 availability and deflecting routine policy and claims questions from human agents is a strong case on its face. But no current call volume, handle time, or agent cost is given, so the size of the gain is assumed, not shown.</p>
+      <span class="badge low">low confidence</span>
+    </div>
+    <div class="cat-card">
+      <div class="cat-head"><span class="cat-name">Kompetenshöjning</span><span class="cat-score">2/5</span></div>
+      <div class="bar"><div class="bar-fill" style="width:40%"></div></div>
+      <p class="cat-reason">The case states directly that nobody on the team has production experience running a customer-facing LLM system. Real skill-building opportunity, but also a real gap, with no plan mentioned to close it.</p>
+      <span class="badge high">high confidence</span>
+    </div>
+    <div class="cat-card">
+      <div class="cat-head"><span class="cat-name">Nytto-/innovationshöjning</span><span class="cat-score">2/5</span></div>
+      <div class="bar"><div class="bar-fill" style="width:40%"></div></div>
+      <p class="cat-reason">Customer-facing insurance chatbots answering coverage and claims questions are already a common pattern industry-wide. The novelty here is applying it to Folksam, not introducing something new to the sector.</p>
+      <span class="badge medium">medium confidence</span>
+    </div>
+    <div class="cat-card">
+      <div class="cat-head"><span class="cat-name">Riskreducering</span><span class="cat-score">2/5</span></div>
+      <div class="bar"><div class="bar-fill" style="width:40%"></div></div>
+      <p class="cat-reason">A confidently wrong answer about someone's actual coverage is the harder failure mode to catch, since fabricated answers can sound just as certain as correct ones. Human fallback only helps if low-confidence cases are reliably flagged.</p>
+      <span class="badge medium">medium confidence</span>
+      <ul class="citations">
+        <li><a href="https://air-governance-framework.finos.org/risks/ri-4_hallucination-and-inaccurate-outputs.html" target="_blank" rel="noopener">FINOS AI Governance Framework: Hallucination and Inaccurate Outputs</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="missing">
+    <h3>What's missing from this case</h3>
+    <ul>
+      <li>How the confidence threshold for falling back to a human agent is set and tested</li>
+      <li>Current query volume or handle time, to actually size the efficiency claim</li>
+      <li>A compliance or legal review step for AI-generated answers about coverage</li>
+      <li>A plan for monitoring accuracy after launch, not just at build time</li>
+    </ul>
+  </div>
+
+  <div class="debate">
+    <h3>The committee pushes back</h3>
+    <div class="target">Challenging: Effektökning (currently 4/5, lowest confidence in the set despite the highest score)</div>
+    <div class="question">"You're scoring this a 4 on efficiency, but there's no call volume, handle time, or current agent cost in the case. What's that number actually based on?"</div>
+    <textarea disabled placeholder="This is where you'd type your defense in the real app..."></textarea>
+    <button disabled>Respond</button>
+    <p class="note">In the live app this is interactive: a real defense with new concrete information moves the score, restated confidence alone doesn't.</p>
+  </div>
+</div>
+</body>
+</html>
