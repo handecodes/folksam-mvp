@@ -5,137 +5,165 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Example output — AI Investment Analysis</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Source+Sans+3:wght@400;500;600&display=swap');
+
   :root {
-    --bg: #f6f7f9;
-    --card: #ffffff;
-    --border: #e2e5ea;
-    --text: #1c2026;
-    --muted: #6b7280;
-    --accent: #2f5fd6;
-    --good: #1e8e5a;
-    --mid: #b8860b;
-    --low: #b3401f;
+    --bg: #f2ecdf;
+    --paper: #fffcf5;
+    --paper-alt: #eadfc7;
+    --rule: #ddceac;
+    --ink: #241a12;
+    --ink-soft: #6e6151;
+    --maroon: #7e2430;
+    --maroon-dark: #591821;
+    --good: #3f6b46;
+    --mid: #97671f;
+    --low: #9c3a2e;
+    --serif: 'Lora', Georgia, 'Times New Roman', serif;
+    --sans: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--sans);
     background: var(--bg);
-    color: var(--text);
-    padding: 2rem 1rem 4rem;
+    background-image: radial-gradient(circle at 12% 8%, #fbf6e8 0%, transparent 45%);
+    color: var(--ink);
+    padding: 3rem 1.25rem 5rem;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
-  .sub { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.95rem; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 1.9rem; margin-bottom: 0.35rem; }
+  .sub { color: var(--ink-soft); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.98rem; font-style: italic; }
   .example-tag {
     display: inline-block;
-    background: #eef1fb;
-    color: var(--accent);
-    font-size: 0.75rem;
+    background: var(--paper-alt);
+    color: var(--maroon);
+    font-size: 0.72rem;
     font-weight: 600;
-    padding: 0.2rem 0.6rem;
-    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    border-radius: 3px;
     margin-bottom: 1rem;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.08em;
   }
   .case-box {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.85rem 1.1rem;
     font-size: 0.9rem;
-    color: var(--muted);
+    color: var(--ink-soft);
     margin-bottom: 1.5rem;
     white-space: pre-wrap;
   }
 
   .overall {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
+    background: var(--maroon);
+    color: #fbf3ea;
+    border-radius: 4px;
+    padding: 1.4rem 1.3rem;
+    margin-bottom: 1.1rem;
   }
-  .overall h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
-  .overall .score { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-  .overall p { color: var(--muted); font-size: 0.9rem; margin: 0.4rem 0 0; }
-  .priority-note { color: var(--muted); font-size: 0.82rem; margin-top: 0.3rem; }
-  .cost-row { display: flex; gap: 0.75rem; align-items: baseline; margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); flex-wrap: wrap; }
-  .cost-tier { font-weight: 700; }
-  .cost-reason { color: var(--muted); font-size: 0.85rem; }
+  .overall h2 { margin: 0 0 0.5rem; font-family: var(--sans); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #e8c9c9; }
+  .overall .score { font-family: var(--serif); font-size: 2.4rem; font-weight: 700; line-height: 1; color: #fffefb; }
+  .overall p { color: #f0ddd2; font-size: 0.9rem; margin: 0.5rem 0 0; }
+  .priority-note { color: #d9a8a8; font-size: 0.78rem; margin-top: 0.3rem; }
+  .cost-row { display: flex; gap: 0.75rem; align-items: baseline; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid rgba(251,243,234,0.25); flex-wrap: wrap; }
+  .cost-row span:first-child { color: #d9a8a8; font-size: 0.8rem; }
+  .cost-tier { font-family: var(--serif); font-weight: 700; color: #fffefb; }
+  .cost-reason { color: #e8c9c9; font-size: 0.85rem; }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  .grid { display: block; counter-reset: catindex; }
 
   .cat-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--maroon);
+    border-radius: 3px;
+    padding: 0.95rem 1.1rem 0.95rem 3.1rem;
+    margin-bottom: 0.7rem;
+  }
+  .cat-card::before {
+    counter-increment: catindex;
+    content: counter(catindex, decimal-leading-zero);
+    position: absolute;
+    left: 1.0rem;
+    top: 0.95rem;
+    font-family: var(--serif);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
   }
   .cat-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .cat-name { font-weight: 600; font-size: 0.95rem; }
-  .cat-score { font-weight: 700; color: var(--accent); }
-  .bar { height: 6px; background: var(--border); border-radius: 3px; margin: 0.4rem 0 0.5rem; overflow: hidden; }
-  .bar-fill { height: 100%; background: var(--accent); }
-  .cat-reason { font-size: 0.88rem; color: var(--text); margin: 0; }
-  .citations { margin: 0.5rem 0 0; padding: 0; list-style: none; }
-  .citations li { font-size: 0.78rem; margin-top: 0.2rem; }
-  .citations a { color: var(--accent); text-decoration: none; }
+  .cat-name { font-family: var(--serif); font-weight: 600; font-size: 1.02rem; color: var(--ink); }
+  .cat-score { font-family: var(--serif); font-weight: 700; font-size: 1.1rem; color: var(--maroon); }
+  .bar { height: 4px; background: var(--rule); border-radius: 2px; margin: 0.5rem 0 0.6rem; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--maroon); }
+  .cat-reason { font-size: 0.9rem; color: var(--ink); margin: 0; line-height: 1.45; }
+  .citations { margin: 0.55rem 0 0; padding: 0; list-style: none; }
+  .citations li { font-size: 0.78rem; margin-top: 0.25rem; }
+  .citations a { color: var(--maroon); text-decoration: none; border-bottom: 1px dotted var(--maroon); }
   .badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     font-size: 0.72rem;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    margin-top: 0.4rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.05em;
   }
-  .badge.high { background: #e3f5ec; color: var(--good); }
-  .badge.medium { background: #fbf1dc; color: var(--mid); }
-  .badge.low { background: #fbe6e0; color: var(--low); }
+  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .badge.high { color: var(--good); } .badge.high::before { background: var(--good); }
+  .badge.medium { color: var(--mid); } .badge.medium::before { background: var(--mid); }
+  .badge.low { color: var(--low); } .badge.low::before { background: var(--low); }
 
   .missing {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
-    margin-top: 0.75rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    margin-top: 1.1rem;
   }
-  .missing h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
-  .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; color: var(--text); }
+  .missing h3 { margin: 0 0 0.6rem; font-family: var(--serif); font-size: 1.02rem; font-weight: 600; color: var(--ink); }
+  .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; color: var(--ink); }
+  .missing li { margin-bottom: 0.5rem; }
 
   .debate {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
-    margin-top: 0.75rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.1rem 1.2rem;
+    margin-top: 1.1rem;
   }
-  .debate h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
-  .debate .target { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.5rem; }
-  .debate .question { font-size: 0.92rem; margin-bottom: 0.6rem; }
-  .debate .note { color: var(--muted); font-size: 0.8rem; font-style: italic; margin-top: 0.5rem; }
+  .debate h3 { margin: 0 0 0.6rem; font-family: var(--serif); font-size: 1.02rem; font-weight: 600; color: var(--ink); }
+  .debate .target { color: var(--ink-soft); font-size: 0.82rem; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .debate .question { font-family: var(--serif); font-style: italic; font-size: 0.98rem; margin-bottom: 0.75rem; padding-left: 0.9rem; border-left: 3px solid var(--maroon); color: var(--ink); }
+  .debate .note { color: var(--ink-soft); font-size: 0.8rem; font-style: italic; margin-top: 0.5rem; }
   textarea {
     width: 100%;
     min-height: 70px;
     padding: 0.6rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: #fffefb;
     font-family: inherit;
     font-size: 0.9rem;
-    color: var(--muted);
+    color: var(--ink-soft);
     resize: none;
   }
   button {
     margin-top: 0.6rem;
-    background: var(--border);
-    color: var(--muted);
+    background: var(--rule);
+    color: var(--ink-soft);
     border: none;
     padding: 0.55rem 1.1rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     cursor: not-allowed;
   }
 </style>
@@ -143,7 +171,7 @@
 <body>
 <div class="wrap">
   <span class="example-tag">Static example, not the live app</span>
-  <h1>AI Investment Analysis</h1>
+  <h1>AI Investment Case Assessment</h1>
   <p class="sub">This is what the real app renders for one case, captured here as a fixed example.</p>
 
   <div class="case-box">We want to build an AI chatbot that answers customer questions about their home and auto insurance policies, coverage details, and claims status, available on our website and app around the clock. It would use a large language model connected to our policy database and claims system through APIs, with a fallback to a human agent for anything it can't answer confidently. Estimated build cost is around 2 million SEK for a 4-month project, plus an ongoing licensing and hosting cost of roughly 300,000 SEK per year. We don't currently have anyone on the team with production experience running a customer-facing LLM system, though our engineers have general software development background.</div>
