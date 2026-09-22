@@ -21,6 +21,7 @@
     --good: #3f6b46;
     --mid: #97671f;
     --low: #9c3a2e;
+    --amber: #9a6a1e; /* muted amber, used to set the internal-KB (RAG demo) block apart from web citations */
     --serif: 'Lora', Georgia, 'Times New Roman', serif;
     --sans: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
@@ -177,6 +178,22 @@
   .citations li { font-size: 0.78rem; margin-top: 0.25rem; }
   .citations a { color: var(--maroon); text-decoration: none; border-bottom: 1px dotted var(--maroon); }
   .citations a:hover { border-bottom-style: solid; }
+  /* Internal knowledge base (RAG demo) block — set apart from web citations with a
+     dashed rule above and a muted amber accent. */
+  .rag-match { margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed var(--amber); }
+  .rag-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--amber);
+    margin-bottom: 0.3rem;
+  }
+  .rag-list { margin: 0; padding: 0; list-style: none; }
+  .rag-list li { font-size: 0.78rem; margin-top: 0.25rem; color: var(--ink); cursor: help; }
+  .rag-doc { color: var(--amber); border-bottom: 1px dotted var(--amber); }
+  .rag-score { color: var(--ink-soft); font-size: 0.72rem; margin-left: 0.35rem; }
   .badge {
     display: inline-flex;
     align-items: center;
@@ -464,6 +481,22 @@
             .map((c) => `<li><a href="${c.url}" target="_blank" rel="noopener">${c.title || c.url}</a></li>`)
             .join("")}</ul>`
         : "";
+      // Internal knowledge base (RAG demo) matches — rendered separately from the
+      // web citations above, in a muted amber block, with the retrieved snippet as
+      // a hover tooltip and the cosine-similarity score shown as "match XX%".
+      const internalKnowledge = Array.isArray(data.internalKnowledge) ? data.internalKnowledge : [];
+      const ragHtml = internalKnowledge.length
+        ? `<div class="rag-match">
+            <span class="rag-label">Internal knowledge base (demo data)</span>
+            <ul class="rag-list">${internalKnowledge
+              .map((m) => {
+                const snippet = String(m.snippet || "").replace(/"/g, "&quot;");
+                const pct = Math.round((Number(m.score) || 0) * 100);
+                return `<li title="${snippet}"><span class="rag-doc">${m.title || "Untitled document"}</span><span class="rag-score">match ${pct}%</span></li>`;
+              })
+              .join("")}</ul>
+          </div>`
+        : "";
       card.innerHTML = `
         <div class="cat-head">
           <span class="cat-name">${meta.swedish}</span>
@@ -473,6 +506,7 @@
         <p class="cat-reason" data-role="reason">${data.reasoning || ""}</p>
         <span class="badge ${confidenceClass(data.confidence)}">${data.confidence || "unknown"} confidence</span>
         ${citationsHtml}
+        ${ragHtml}
       `;
       categoryGrid.appendChild(card);
     });
