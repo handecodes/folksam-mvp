@@ -11,6 +11,12 @@ const PORT = process.env.PORT || 3000;
 const MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
 // Set WEB_SEARCH=false in .env to turn off live grounding (e.g. to save credits or speed things up).
 const WEB_SEARCH_ENABLED = process.env.WEB_SEARCH !== "false";
+// Set RAG=false in .env to turn off the internal-knowledge-base retrieval demo.
+const RAG_ENABLED = process.env.RAG !== "false";
+const EMBEDDING_MODEL = process.env.OPENROUTER_EMBEDDING_MODEL || "google/gemini-embedding-001";
+// If the primary embedding model is unavailable (e.g. no OpenRouter endpoint for it),
+// the RAG path automatically retries with this one and pins it for the rest of the process.
+const EMBEDDING_MODEL_FALLBACK = "openai/text-embedding-3-large";
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -22,6 +28,44 @@ const CATEGORIES = [
   { id: "kompetenshojning", swedish: "Kompetenshöjning", english: "Skill / competence increase" },
   { id: "nyttoInnovationshojning", swedish: "Nytto-/innovationshöjning", english: "Benefit / innovation increase" },
   { id: "riskreducering", swedish: "Riskreducering", english: "Risk reduction" }
+];
+
+// FICTIONAL DEMO DATA — NOT REAL COMPANY DOCUMENTS.
+// A small, made-up internal knowledge base for an invented insurer, "Polaris Försäkring".
+// It exists purely so the RAG (retrieval-augmented generation) demo has something real to
+// embed and retrieve against, without needing any actual Folksam or Polaris data. Every
+// title is prefixed [FICTIONAL DEMO] to make clear these are fabricated for the demo.
+const KNOWLEDGE_BASE = [
+  {
+    id: "kb-chatbot-postmortem",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — AI chatbot pilot post-mortem",
+    text: "Internal post-mortem for the customer-service AI chatbot pilot at Polaris Försäkring. The pilot slipped roughly four months past its target launch. The single largest cause of the delay was a lack of ML-ops staff: the team had data scientists who could build the model but nobody to own deployment, monitoring, retraining, and incident response in production. Lesson learned: any future AI pilot must have a named ML-ops owner and a monitoring plan before the build starts, not after."
+  },
+  {
+    id: "kb-data-governance",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — data governance and ownership policy",
+    text: "Data governance policy for Polaris Försäkring. Any AI system that consumes claims data must have a named data owner accountable for that dataset before it can move from pilot to production. The owner is responsible for data quality, lawful basis, retention, and access controls. Production sign-off is blocked until ownership is formally assigned. Unowned or ambiguously owned claims data is treated as a hard blocker, not a documentation nicety."
+  },
+  {
+    id: "kb-cost-benchmark",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — IT cost benchmark memo (inference)",
+    text: "IT cost benchmark memo from Polaris Försäkring. For customer-facing generative AI features, the internal planning benchmark is a per-interaction inference cost of about 0.4 SEK per handled interaction at current volumes. Teams proposing new AI features should model expected interaction volume against this per-interaction figure so ongoing run-cost, not just build cost, is visible to the investment committee before approval."
+  },
+  {
+    id: "kb-innovation-charter",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — innovation committee charter",
+    text: "Charter of the Polaris Försäkring innovation committee. The committee defines 'innovation' deliberately: innovation means changing what the company is able to offer its customers — new products, new coverage, new service categories — not merely automating existing processes so they run faster or cheaper. Efficiency gains are valuable but are scored separately. A proposal that only speeds up an existing workflow should not be classified as innovation."
+  },
+  {
+    id: "kb-vendor-risk",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — AI vendor risk checklist",
+    text: "Vendor risk checklist for Polaris Försäkring. Before any external AI vendor can be used even in a pilot, the vendor must pass a security review and a signed Data Processing Agreement (DPA) must be in place. The checklist also covers sub-processor disclosure, data residency, and model-training-on-customer-data terms. No customer or claims data may be sent to a vendor until both the security review and the DPA are complete."
+  },
+  {
+    id: "kb-skills-survey",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — employee AI skills survey",
+    text: "Results of the annual employee AI skills survey at Polaris Försäkring. Only 12% of non-IT staff report hands-on experience actually using AI tools in their day-to-day work, versus a much higher share who are merely 'aware' of them. The gap suggests that AI initiatives depending on broad non-IT adoption will need substantial training and change management, and that competence-uplift claims should be checked against this low baseline."
+  }
 ];
 
 function buildSystemPrompt() {
@@ -262,6 +306,148 @@ function hasRealKey() {
   return Boolean(apiKey) && apiKey !== "your_key_here";
 }
 
+// --- RAG (retrieval-augmented generation) demo helpers ---------------------
+// Real embedding-based retrieval against the fictional KNOWLEDGE_BASE above.
+// The math is real cosine similarity over real embeddings; only the source
+// documents are fabricated, so the demo needs no real Folksam/Polaris data.
+
+// Embeds an array of strings in one batched call with a specific model, returns
+// embeddings ordered to match the input array (OpenRouter returns them with an
+// `index` field).
+async function embedTexts(texts, model) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const response = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model, input: texts })
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Embedding request failed (${response.status}): ${errText}`);
+  }
+  const data = await response.json();
+  const items = Array.isArray(data?.data) ? data.data : [];
+  return items
+    .slice()
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    .map((item) => item.embedding);
+}
+
+// Once one embedding model succeeds we pin it for the rest of the process, so the
+// KB documents and the query text are always embedded with the SAME model —
+// cosine similarity across two different models is meaningless.
+let resolvedEmbeddingModel = null;
+async function embedTextsWithFallback(texts) {
+  const order = resolvedEmbeddingModel
+    ? [resolvedEmbeddingModel]
+    : [EMBEDDING_MODEL, EMBEDDING_MODEL_FALLBACK];
+  let lastErr;
+  for (const model of order) {
+    try {
+      const embeddings = await embedTexts(texts, model);
+      if (resolvedEmbeddingModel !== model) {
+        resolvedEmbeddingModel = model;
+        console.log(`Using embedding model: ${model}`);
+      }
+      return embeddings;
+    } catch (err) {
+      lastErr = err;
+      console.error(`Embedding model ${model} failed: ${err.message}`);
+    }
+  }
+  throw lastErr;
+}
+
+// Standard cosine similarity between two equal-length number arrays.
+function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Only attach an internal-KB match when it clears this cosine-similarity bar,
+// so weak/unrelated matches show as "no match" rather than noise.
+const RAG_SIMILARITY_THRESHOLD = 0.50;
+
+// Embed the KB documents once and cache them, so we pay for that embedding call
+// at most once per process instead of on every evaluation request.
+let kbEmbeddingsCache = null;
+async function ensureKbEmbeddings() {
+  if (kbEmbeddingsCache) return kbEmbeddingsCache;
+  const embeddings = await embedTextsWithFallback(KNOWLEDGE_BASE.map((doc) => `${doc.title}\n${doc.text}`));
+  kbEmbeddingsCache = KNOWLEDGE_BASE.map((doc, i) => ({ doc, embedding: embeddings[i] }));
+  return kbEmbeddingsCache;
+}
+
+// For each of the four categories, embed its reasoning (all in one batched call),
+// find the single best-matching KB document, and attach it as
+// category.internalKnowledge = [{ title, snippet, score }] only if it clears the
+// threshold, otherwise []. Mirrors findCitationsPerCategory's shape.
+async function findInternalKnowledgePerCategory(categories) {
+  const kb = await ensureKbEmbeddings();
+  const entries = Object.entries(categories);
+  const reasoningTexts = entries.map(([, cat]) => cat.reasoning || "");
+  const reasoningEmbeddings = await embedTextsWithFallback(reasoningTexts);
+
+  entries.forEach(([id], i) => {
+    const queryEmbedding = reasoningEmbeddings[i];
+    let best = null;
+    kb.forEach(({ doc, embedding }) => {
+      const score = cosineSimilarity(queryEmbedding, embedding);
+      if (!best || score > best.score) {
+        best = { doc, score };
+      }
+    });
+    if (best && best.score >= RAG_SIMILARITY_THRESHOLD) {
+      categories[id].internalKnowledge = [
+        {
+          title: best.doc.title,
+          snippet: best.doc.text.slice(0, 240),
+          score: best.score
+        }
+      ];
+    } else {
+      categories[id].internalKnowledge = [];
+    }
+  });
+}
+
+// Deterministic fake KB match per category, for mock mode (no key / RAG demo
+// without spending credits). References the same fictional Polaris KB docs.
+function buildMockInternalKnowledge(categoryId) {
+  const mocks = {
+    effektokning: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — IT cost benchmark memo (inference)",
+      snippet: "MOCK RAG MATCH. Per-interaction inference cost benchmark (~0.4 SEK/interaction) that an efficiency claim should be modelled against.",
+      score: 0.81
+    },
+    kompetenshojning: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — employee AI skills survey",
+      snippet: "MOCK RAG MATCH. Only 12% of non-IT staff report hands-on AI experience, a low baseline any competence-uplift claim should be checked against.",
+      score: 0.84
+    },
+    nyttoInnovationshojning: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — innovation committee charter",
+      snippet: "MOCK RAG MATCH. Innovation means changing what the company can offer customers, not just automating existing processes faster.",
+      score: 0.79
+    },
+    riskreducering: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — AI vendor risk checklist",
+      snippet: "MOCK RAG MATCH. AI vendors need a passed security review and a signed DPA before any pilot touches customer or claims data.",
+      score: 0.83
+    }
+  };
+  return mocks[categoryId] ? [mocks[categoryId]] : [];
+}
+
 // Fake response so the full UI/flow can be tested without spending any
 // hackathon API credits. Used automatically whenever no real key is set.
 function buildMockResult(caseText) {
@@ -274,13 +460,15 @@ function buildMockResult(caseText) {
         citations: [
           { title: "(mock) Example: McKinsey report on AI efficiency gains in insurance", url: "https://example.com/mock-source-1" },
           { title: "(mock) Example: industry survey on AI customer service deflection rates", url: "https://example.com/mock-source-1b" }
-        ]
+        ],
+        internalKnowledge: buildMockInternalKnowledge("effektokning")
       },
       kompetenshojning: {
         score: 4,
         reasoning: "MOCK DATA. Placeholder reasoning for the skill/competence category, replace by running with a real key. This one legitimately has no citation in this mock, showing what an honest empty result looks like.",
         confidence: "medium",
-        citations: []
+        citations: [],
+        internalKnowledge: buildMockInternalKnowledge("kompetenshojning")
       },
       nyttoInnovationshojning: {
         score: 2,
@@ -288,7 +476,8 @@ function buildMockResult(caseText) {
         confidence: "low",
         citations: [
           { title: "(mock) Example: Gartner note on maturity of this AI use case pattern", url: "https://example.com/mock-source-3" }
-        ]
+        ],
+        internalKnowledge: buildMockInternalKnowledge("nyttoInnovationshojning")
       },
       riskreducering: {
         score: 3,
@@ -296,7 +485,8 @@ function buildMockResult(caseText) {
         confidence: "medium",
         citations: [
           { title: "(mock) Example: Gartner fraud-detection benchmark", url: "https://example.com/mock-source-2" }
-        ]
+        ],
+        internalKnowledge: buildMockInternalKnowledge("riskreducering")
       }
     },
     missingInfo: [
@@ -379,10 +569,17 @@ app.post("/api/evaluate", async (req, res) => {
 
     Object.values(parsed.categories).forEach((cat) => {
       cat.citations = [];
+      cat.internalKnowledge = [];
     });
 
-    if (WEB_SEARCH_ENABLED) {
-      await findCitationsPerCategory(parsed.categories);
+    // Web citation search and internal-KB (RAG) retrieval run concurrently and
+    // independently: one failing must not sink the other, hence allSettled.
+    const [, ragResult] = await Promise.allSettled([
+      WEB_SEARCH_ENABLED ? findCitationsPerCategory(parsed.categories) : Promise.resolve(),
+      RAG_ENABLED ? findInternalKnowledgePerCategory(parsed.categories) : Promise.resolve()
+    ]);
+    if (ragResult.status === "rejected") {
+      console.error("Internal knowledge retrieval failed:", ragResult.reason?.message);
     }
 
     parsed.priorityScore = computePriorityScore(parsed.categories, parsed.costEstimate?.tier ?? 3);
@@ -421,6 +618,26 @@ app.post("/api/fill-gap", async (req, res) => {
       userMessage,
       temperature: mode === "assume" ? 0.4 : 0.2
     });
+
+    // The model occasionally returns a hallucinated or blended category id in
+    // changedCategories (e.g. "nyttokompetenshojning" instead of the real
+    // "nyttoInnovationshojning"). Drop any key that isn't a real category id, so
+    // the UI never renders a bogus category. We drop rather than remap on purpose:
+    // a blended id is ambiguous, and applying its score to the wrong category would
+    // be worse than simply showing no change for it.
+    if (parsed && parsed.changedCategories && typeof parsed.changedCategories === "object") {
+      const validIds = new Set(CATEGORIES.map((c) => c.id));
+      const filtered = {};
+      for (const [id, value] of Object.entries(parsed.changedCategories)) {
+        if (validIds.has(id)) {
+          filtered[id] = value;
+        } else {
+          console.warn(`fill-gap: dropped unknown category id "${id}" returned by the model`);
+        }
+      }
+      parsed.changedCategories = filtered;
+    }
+
     res.json({ ...parsed, mode: "live" });
   } catch (err) {
     console.error(err);
