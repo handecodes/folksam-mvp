@@ -174,6 +174,7 @@ Return ONLY valid JSON, no markdown fences:
 
 async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSearch = false }) {
   const apiKey = process.env.OPENROUTER_API_KEY;
+  const guardedSystemPrompt = `${systemPrompt}\n\nIMPORTANT: respond with raw JSON only, no prose before or after, no apologies or refusals in plain text outside the JSON. If you lack enough information to judge something, reflect that inside the JSON itself (low confidence, an empty array, a note in a reasoning field), never by responding outside the JSON structure.`;
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -181,7 +182,7 @@ async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSear
       model: MODEL,
       temperature,
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: guardedSystemPrompt },
         { role: "user", content: userMessage }
       ],
       ...(webSearch ? { plugins: [{ id: "web" }] } : {})
@@ -194,7 +195,15 @@ async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSear
   const data = await response.json();
   const raw = data?.choices?.[0]?.message?.content || "";
   const cleaned = raw.replace(/```json|```/g, "").trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch (e2) {}
+    }
+    throw new Error(`Model did not return valid JSON, got: "${cleaned.slice(0, 200)}"`);
+  }
 }
 
 // Runs one dedicated, web-search-grounded call per category to find real citations,
