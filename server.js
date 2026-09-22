@@ -9,6 +9,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
+// Set WEB_SEARCH=false in .env to turn off live citation grounding (e.g. to save credits or speed things up).
+const WEB_SEARCH_ENABLED = process.env.WEB_SEARCH !== "false";
+// Set RAG=false in .env to turn off the internal-knowledge-base retrieval demo.
+const RAG_ENABLED = process.env.RAG !== "false";
+const EMBEDDING_MODEL = process.env.OPENROUTER_EMBEDDING_MODEL || "google/gemini-embedding-001";
+// If the primary embedding model is unavailable (e.g. no OpenRouter endpoint for it),
+// the RAG path automatically retries with this one and pins it for the rest of the process.
+const EMBEDDING_MODEL_FALLBACK = "openai/text-embedding-3-large";
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -20,6 +28,44 @@ const CATEGORIES = [
   { id: "kompetenshojning", swedish: "Kompetenshöjning", english: "Skill / competence increase" },
   { id: "nyttoInnovationshojning", swedish: "Nytto-/innovationshöjning", english: "Benefit / innovation increase" },
   { id: "riskreducering", swedish: "Riskreducering", english: "Risk reduction" }
+];
+
+// FICTIONAL DEMO DATA — NOT REAL COMPANY DOCUMENTS.
+// A small, made-up internal knowledge base for an invented insurer, "Polaris Försäkring".
+// It exists purely so the RAG (retrieval-augmented generation) demo has something real to
+// embed and retrieve against, without needing any actual Folksam or Polaris data. Every
+// title is prefixed [FICTIONAL DEMO] to make clear these are fabricated for the demo.
+const KNOWLEDGE_BASE = [
+  {
+    id: "kb-chatbot-postmortem",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — AI chatbot pilot post-mortem",
+    text: "Internal post-mortem for the customer-service AI chatbot pilot at Polaris Försäkring. The pilot slipped roughly four months past its target launch. The single largest cause of the delay was a lack of ML-ops staff: the team had data scientists who could build the model but nobody to own deployment, monitoring, retraining, and incident response in production. Lesson learned: any future AI pilot must have a named ML-ops owner and a monitoring plan before the build starts, not after."
+  },
+  {
+    id: "kb-data-governance",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — data governance and ownership policy",
+    text: "Data governance policy for Polaris Försäkring. Any AI system that consumes claims data must have a named data owner accountable for that dataset before it can move from pilot to production. The owner is responsible for data quality, lawful basis, retention, and access controls. Production sign-off is blocked until ownership is formally assigned. Unowned or ambiguously owned claims data is treated as a hard blocker, not a documentation nicety."
+  },
+  {
+    id: "kb-cost-benchmark",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — IT cost benchmark memo (inference)",
+    text: "IT cost benchmark memo from Polaris Försäkring. For customer-facing generative AI features, the internal planning benchmark is a per-interaction inference cost of about 0.4 SEK per handled interaction at current volumes. Teams proposing new AI features should model expected interaction volume against this per-interaction figure so ongoing run-cost, not just build cost, is visible to the investment committee before approval."
+  },
+  {
+    id: "kb-innovation-charter",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — innovation committee charter",
+    text: "Charter of the Polaris Försäkring innovation committee. The committee defines 'innovation' deliberately: innovation means changing what the company is able to offer its customers — new products, new coverage, new service categories — not merely automating existing processes so they run faster or cheaper. Efficiency gains are valuable but are scored separately. A proposal that only speeds up an existing workflow should not be classified as innovation."
+  },
+  {
+    id: "kb-vendor-risk",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — AI vendor risk checklist",
+    text: "Vendor risk checklist for Polaris Försäkring. Before any external AI vendor can be used even in a pilot, the vendor must pass a security review and a signed Data Processing Agreement (DPA) must be in place. The checklist also covers sub-processor disclosure, data residency, and model-training-on-customer-data terms. No customer or claims data may be sent to a vendor until both the security review and the DPA are complete."
+  },
+  {
+    id: "kb-skills-survey",
+    title: "[FICTIONAL DEMO] Polaris Försäkring — employee AI skills survey",
+    text: "Results of the annual employee AI skills survey at Polaris Försäkring. Only 12% of non-IT staff report hands-on experience actually using AI tools in their day-to-day work, versus a much higher share who are merely 'aware' of them. The gap suggests that AI initiatives depending on broad non-IT adoption will need substantial training and change management, and that competence-uplift claims should be checked against this low baseline."
+  }
 ];
 
 // Case-level pass: no longer scores the four categories here. Category scoring
@@ -196,9 +242,42 @@ const APPROACH_LABELS = {
   mixed: "Mixed (AI + team)"
 };
 
-async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSearch = false }) {
+const SOURCING_PREFERENCE = `Sourcing preference: prefer peer-reviewed research, established analyst firms (e.g. McKinsey, Gartner), and public company reports. Avoid forum posts, unverified blogs, or informal internet commentary. If search only turns up low-quality sources, return no citations rather than citing those. Never invent a title or URL, only cite something you actually have in front of you from search results.`;
+
+// The web-search citation pass is hard-restricted to these domains via the plugin's
+// include_domains, so the model can't wander off to low-quality sources even if it
+// ignores the prompt. EU/Swedish regulators plus a few known analyst firms.
+const TRUSTED_SOURCE_DOMAINS = [
+  "eur-lex.europa.eu",
+  "eiopa.europa.eu",
+  "ec.europa.eu",
+  "ecb.europa.eu",
+  "fi.se",
+  "mckinsey.com",
+  "gartner.com",
+  "deloitte.com",
+  "www2.deloitte.com",
+  "oecd.org"
+];
+
+function buildCitationSearchPrompt() {
+  return `You are searching for real, credible sources to support or check one specific claim made about an AI investment case at Folksam, a Swedish insurance company. You will be given the claim (one category's score and reasoning). Search for 0-2 real sources that genuinely relate to this specific claim, a comparable real-world case, a relevant statistic, a report finding.
+
+${SOURCING_PREFERENCE}
+
+Search results are already restricted to a fixed list of EU/Swedish regulators and known analyst firms, so anything that comes back is from that trusted set, you don't need to second-guess the origin of a source.
+
+If nothing credible and genuinely relevant turns up, return an empty array, that's a normal and expected outcome, don't force a weak match.
+
+Return ONLY valid JSON, no markdown fences: { "citations": [{ "title": "", "url": "" }] }`;
+}
+
+async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSearch = false, searchDomains = null }) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const guardedSystemPrompt = `${systemPrompt}\n\nIMPORTANT: respond with raw JSON only, no prose before or after, no apologies or refusals in plain text outside the JSON. If you lack enough information to judge something, reflect that inside the JSON itself (low confidence, an empty array, a note in a reasoning field), never by responding outside the JSON structure.`;
+  const webPlugin = webSearch
+    ? { id: "web", ...(searchDomains ? { include_domains: searchDomains } : {}) }
+    : null;
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -209,7 +288,7 @@ async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSear
         { role: "system", content: guardedSystemPrompt },
         { role: "user", content: userMessage }
       ],
-      ...(webSearch ? { plugins: [{ id: "web" }] } : {})
+      ...(webPlugin ? { plugins: [webPlugin] } : {})
     })
   });
   if (!response.ok) {
@@ -235,6 +314,200 @@ function hasRealKey() {
   return Boolean(apiKey) && apiKey !== "your_key_here";
 }
 
+// --- Web-citation grounding -----------------------------------------------
+// Categories are scored per build approach, so the same category id (e.g.
+// "riskreducering") appears in all three approaches. Rather than run a web
+// search for every approach×category (12 searches), we run ONE search per
+// category id — using a representative reasoning — and share the resulting
+// citations across every approach's matching category. The claim a citation
+// grounds is essentially the same regardless of which team builds it, and this
+// keeps the live call to 4 searches instead of 12.
+async function findCitationsForApproaches(approaches) {
+  const ids = CATEGORIES.map((c) => c.id);
+  const representative = {};
+  ids.forEach((id) => {
+    for (const a of approaches) {
+      const cat = a.categories?.[id];
+      if (cat && cat.reasoning) {
+        representative[id] = { score: cat.score, reasoning: cat.reasoning };
+        break;
+      }
+    }
+  });
+  const searchIds = ids.filter((id) => representative[id]);
+  const results = await Promise.allSettled(
+    searchIds.map((id) =>
+      callModel({
+        systemPrompt: buildCitationSearchPrompt(),
+        userMessage: `Category: ${id}\nScore: ${representative[id].score}/5\nReasoning: ${representative[id].reasoning}`,
+        temperature: 0.2,
+        webSearch: true,
+        searchDomains: TRUSTED_SOURCE_DOMAINS
+      })
+    )
+  );
+  const citationsById = {};
+  results.forEach((result, i) => {
+    const id = searchIds[i];
+    if (result.status === "fulfilled" && Array.isArray(result.value.citations)) {
+      citationsById[id] = result.value.citations;
+    } else {
+      citationsById[id] = [];
+      if (result.status === "rejected") {
+        console.error(`Citation search failed for ${id}:`, result.reason?.message);
+      }
+    }
+  });
+  approaches.forEach((a) => {
+    if (!a.categories) return;
+    ids.forEach((id) => {
+      if (a.categories[id]) a.categories[id].citations = citationsById[id] || [];
+    });
+  });
+}
+
+// --- RAG (retrieval-augmented generation) demo helpers ---------------------
+// Real embedding-based retrieval against the fictional KNOWLEDGE_BASE above.
+// The math is real cosine similarity over real embeddings; only the source
+// documents are fabricated, so the demo needs no real Folksam/Polaris data.
+
+// Embeds an array of strings in one batched call with a specific model, returns
+// embeddings ordered to match the input array (OpenRouter returns them with an
+// `index` field).
+async function embedTexts(texts, model) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const response = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model, input: texts })
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Embedding request failed (${response.status}): ${errText}`);
+  }
+  const data = await response.json();
+  const items = Array.isArray(data?.data) ? data.data : [];
+  return items
+    .slice()
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    .map((item) => item.embedding);
+}
+
+// Once one embedding model succeeds we pin it for the rest of the process, so the
+// KB documents and the query text are always embedded with the SAME model —
+// cosine similarity across two different models is meaningless.
+let resolvedEmbeddingModel = null;
+async function embedTextsWithFallback(texts) {
+  const order = resolvedEmbeddingModel
+    ? [resolvedEmbeddingModel]
+    : [EMBEDDING_MODEL, EMBEDDING_MODEL_FALLBACK];
+  let lastErr;
+  for (const model of order) {
+    try {
+      const embeddings = await embedTexts(texts, model);
+      if (resolvedEmbeddingModel !== model) {
+        resolvedEmbeddingModel = model;
+        console.log(`Using embedding model: ${model}`);
+      }
+      return embeddings;
+    } catch (err) {
+      lastErr = err;
+      console.error(`Embedding model ${model} failed: ${err.message}`);
+    }
+  }
+  throw lastErr;
+}
+
+// Standard cosine similarity between two equal-length number arrays.
+function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// Only attach an internal-KB match when it clears this cosine-similarity bar,
+// so weak/unrelated matches show as "no match" rather than noise.
+const RAG_SIMILARITY_THRESHOLD = 0.50;
+
+// Embed the KB documents once and cache them, so we pay for that embedding call
+// at most once per process instead of on every request.
+let kbEmbeddingsCache = null;
+async function ensureKbEmbeddings() {
+  if (kbEmbeddingsCache) return kbEmbeddingsCache;
+  const embeddings = await embedTextsWithFallback(KNOWLEDGE_BASE.map((doc) => `${doc.title}\n${doc.text}`));
+  kbEmbeddingsCache = KNOWLEDGE_BASE.map((doc, i) => ({ doc, embedding: embeddings[i] }));
+  return kbEmbeddingsCache;
+}
+
+// For each category in one categories object, embed its reasoning (all in one
+// batched call), find the single best-matching KB document, and attach it as
+// category.internalKnowledge = [{ title, snippet, score }] only if it clears the
+// threshold, otherwise []. Called once per build approach.
+async function findInternalKnowledgePerCategory(categories) {
+  const kb = await ensureKbEmbeddings();
+  const entries = Object.entries(categories);
+  const reasoningTexts = entries.map(([, cat]) => cat.reasoning || "");
+  const reasoningEmbeddings = await embedTextsWithFallback(reasoningTexts);
+
+  entries.forEach(([id], i) => {
+    const queryEmbedding = reasoningEmbeddings[i];
+    let best = null;
+    kb.forEach(({ doc, embedding }) => {
+      const score = cosineSimilarity(queryEmbedding, embedding);
+      if (!best || score > best.score) {
+        best = { doc, score };
+      }
+    });
+    if (best && best.score >= RAG_SIMILARITY_THRESHOLD) {
+      categories[id].internalKnowledge = [
+        {
+          title: best.doc.title,
+          snippet: best.doc.text.slice(0, 240),
+          score: best.score
+        }
+      ];
+    } else {
+      categories[id].internalKnowledge = [];
+    }
+  });
+}
+
+// Deterministic fake KB match per category, for mock mode (no key / RAG demo
+// without spending credits). References the same fictional Polaris KB docs.
+function buildMockInternalKnowledge(categoryId) {
+  const mocks = {
+    effektokning: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — IT cost benchmark memo (inference)",
+      snippet: "MOCK RAG MATCH. Per-interaction inference cost benchmark (~0.4 SEK/interaction) that an efficiency claim should be modelled against.",
+      score: 0.81
+    },
+    kompetenshojning: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — employee AI skills survey",
+      snippet: "MOCK RAG MATCH. Only 12% of non-IT staff report hands-on AI experience, a low baseline any competence-uplift claim should be checked against.",
+      score: 0.84
+    },
+    nyttoInnovationshojning: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — innovation committee charter",
+      snippet: "MOCK RAG MATCH. Innovation means changing what the company can offer customers, not just automating existing processes faster.",
+      score: 0.79
+    },
+    riskreducering: {
+      title: "[FICTIONAL DEMO] Polaris Försäkring — AI vendor risk checklist",
+      snippet: "MOCK RAG MATCH. AI vendors need a passed security review and a signed DPA before any pilot touches customer or claims data.",
+      score: 0.83
+    }
+  };
+  return mocks[categoryId] ? [mocks[categoryId]] : [];
+}
+
 // Mock category scores per approach: same shape the model would produce, deliberately
 // different score/confidence per approach so the mock UI demonstrates the point
 // (riskreducering in particular should read lowest for ai-only, highest for dev-team,
@@ -242,10 +515,10 @@ function hasRealKey() {
 // ai-only's review is thin, matching the "resources check" logic in the real prompt).
 function mockCategories({ effekt, kompetens, nytto, risk, riskReasoning }) {
   return {
-    effektokning: { score: effekt, reasoning: "MOCK DATA. Efficiency read based on this approach's own role/hours/timeWeeks estimate.", confidence: "medium" },
-    kompetenshojning: { score: kompetens, reasoning: "MOCK DATA. Skill-growth read based on who (or what) is actually doing the work in this approach.", confidence: "medium" },
-    nyttoInnovationshojning: { score: nytto, reasoning: "MOCK DATA. Innovation read based on what this approach's time/cost constraints actually allow trying.", confidence: "low" },
-    riskreducering: { score: risk, reasoning: `MOCK DATA. ${riskReasoning}`, confidence: "medium" }
+    effektokning: { score: effekt, reasoning: "MOCK DATA. Efficiency read based on this approach's own role/hours/timeWeeks estimate.", confidence: "medium", citations: [{ title: "(mock) Example: McKinsey report on AI efficiency gains in insurance", url: "https://example.com/mock-source-1" }], internalKnowledge: buildMockInternalKnowledge("effektokning") },
+    kompetenshojning: { score: kompetens, reasoning: "MOCK DATA. Skill-growth read based on who (or what) is actually doing the work in this approach.", confidence: "medium", citations: [], internalKnowledge: buildMockInternalKnowledge("kompetenshojning") },
+    nyttoInnovationshojning: { score: nytto, reasoning: "MOCK DATA. Innovation read based on what this approach's time/cost constraints actually allow trying.", confidence: "low", citations: [{ title: "(mock) Example: Gartner note on maturity of this AI use case pattern", url: "https://example.com/mock-source-3" }], internalKnowledge: buildMockInternalKnowledge("nyttoInnovationshojning") },
+    riskreducering: { score: risk, reasoning: `MOCK DATA. ${riskReasoning}`, confidence: "medium", citations: [{ title: "(mock) Example: Gartner fraud-detection benchmark", url: "https://example.com/mock-source-2" }], internalKnowledge: buildMockInternalKnowledge("riskreducering") }
   };
 }
 
@@ -408,6 +681,32 @@ app.post("/api/build-approaches", async (req, res) => {
       const withCost = { ...a, label: APPROACH_LABELS[a.id] || a.id, ...computeApproachCost(a) };
       withCost.priorityScore = computePriorityScore(withCost.categories || {}, withCost.costTier);
       return withCost;
+    });
+
+    // Ground each approach's category ratings: internal-KB (RAG) matches per
+    // approach category, plus web citations (shared per category across
+    // approaches). Initialize both to [] first so a partial failure of either
+    // grounding pass leaves clean empty arrays rather than undefined.
+    approaches.forEach((a) => {
+      if (!a.categories) return;
+      Object.values(a.categories).forEach((c) => {
+        c.citations = [];
+        c.internalKnowledge = [];
+      });
+    });
+
+    const groundingTasks = [];
+    if (RAG_ENABLED) {
+      approaches.forEach((a) => {
+        if (a.categories) groundingTasks.push(findInternalKnowledgePerCategory(a.categories));
+      });
+    }
+    if (WEB_SEARCH_ENABLED) {
+      groundingTasks.push(findCitationsForApproaches(approaches));
+    }
+    const grounded = await Promise.allSettled(groundingTasks);
+    grounded.forEach((g) => {
+      if (g.status === "rejected") console.error("Approach grounding failed:", g.reason?.message);
     });
 
     res.json({ approaches: sortApproaches(approaches), categories: CATEGORIES, rateCard: ROLE_RATES_SEK_PER_HOUR, mode: "live" });
