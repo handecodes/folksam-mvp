@@ -144,10 +144,28 @@ Return ONLY valid JSON, no markdown fences:
 
 const SOURCING_PREFERENCE = `Sourcing preference: prefer peer-reviewed research, established analyst firms (e.g. McKinsey, Gartner), and public company reports. Avoid forum posts, unverified blogs, or informal internet commentary. If search only turns up low-quality sources, return no citations rather than citing those. Never invent a title or URL, only cite something you actually have in front of you from search results.`;
 
+// The web-search citation pass is hard-restricted to these domains via the plugin's
+// include_domains, so the model can't wander off to low-quality sources even if it
+// ignores the prompt. EU/Swedish regulators plus a few known analyst firms.
+const TRUSTED_SOURCE_DOMAINS = [
+  "eur-lex.europa.eu",
+  "eiopa.europa.eu",
+  "ec.europa.eu",
+  "ecb.europa.eu",
+  "fi.se",
+  "mckinsey.com",
+  "gartner.com",
+  "deloitte.com",
+  "www2.deloitte.com",
+  "oecd.org"
+];
+
 function buildCitationSearchPrompt() {
   return `You are searching for real, credible sources to support or check one specific claim made about an AI investment case at Folksam, a Swedish insurance company. You will be given the claim (one category's score and reasoning). Search for 0-2 real sources that genuinely relate to this specific claim, a comparable real-world case, a relevant statistic, a report finding.
 
 ${SOURCING_PREFERENCE}
+
+Search results are already restricted to a fixed list of EU/Swedish regulators and known analyst firms, so anything that comes back is from that trusted set, you don't need to second-guess the origin of a source.
 
 If nothing credible and genuinely relevant turns up, return an empty array, that's a normal and expected outcome, don't force a weak match.
 
@@ -172,9 +190,12 @@ Return ONLY valid JSON, no markdown fences:
 }`;
 }
 
-async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSearch = false }) {
+async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSearch = false, searchDomains = null }) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const guardedSystemPrompt = `${systemPrompt}\n\nIMPORTANT: respond with raw JSON only, no prose before or after, no apologies or refusals in plain text outside the JSON. If you lack enough information to judge something, reflect that inside the JSON itself (low confidence, an empty array, a note in a reasoning field), never by responding outside the JSON structure.`;
+  const webPlugin = webSearch
+    ? { id: "web", ...(searchDomains ? { include_domains: searchDomains } : {}) }
+    : null;
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -185,7 +206,7 @@ async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSear
         { role: "system", content: guardedSystemPrompt },
         { role: "user", content: userMessage }
       ],
-      ...(webSearch ? { plugins: [{ id: "web" }] } : {})
+      ...(webPlugin ? { plugins: [webPlugin] } : {})
     })
   });
   if (!response.ok) {
@@ -218,7 +239,8 @@ async function findCitationsPerCategory(categories) {
         systemPrompt: buildCitationSearchPrompt(),
         userMessage: `Category: ${id}\nScore: ${cat.score}/5\nReasoning: ${cat.reasoning}`,
         temperature: 0.2,
-        webSearch: true
+        webSearch: true,
+        searchDomains: TRUSTED_SOURCE_DOMAINS
       })
     )
   );
