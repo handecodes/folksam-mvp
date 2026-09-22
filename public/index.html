@@ -251,6 +251,19 @@
     .then((h) => { if (h.mode === "mock") mockBanner.style.display = "block"; })
     .catch(() => {});
 
+  // Defense in depth: category ids ultimately come from the model. The server
+  // normalizes them to canonical ids, but if an unrecognized one ever slipped
+  // through, never interpolate it into innerHTML unescaped.
+  function escapeHtml(str) {
+    return String(str ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[ch]));
+  }
+
   function confidenceClass(c) {
     if (c === "high") return "high";
     if (c === "medium") return "medium";
@@ -342,7 +355,7 @@
         changedIds.forEach((id) => {
           const meta = currentCategoriesMeta.find((m) => m.id === id);
           const oldScore = currentResult?.categories?.[id]?.score;
-          const name = meta ? meta.swedish : id;
+          const name = meta ? meta.swedish : escapeHtml(id);
           html += `<div class="change"><strong>${name}</strong>: ${oldScore != null ? oldScore + " → " : ""}${changed[id].score}/5. ${changed[id].reasoning}</div>`;
         });
       }

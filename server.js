@@ -24,6 +24,47 @@ const CATEGORIES = [
   { id: "riskreducering", swedish: "Riskreducering", english: "Risk reduction" }
 ];
 
+// The model sometimes returns a category id in a slightly different shape than the
+// canonical one above (different casing, underscores/hyphens/slashes instead of
+// camelCase, or an outright spelling variant). This maps any recognizable variant
+// back to the canonical id so the UI can always look up the right label/score.
+const CATEGORY_ID_ALIASES = new Map();
+
+function categoryIdLookupKey(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+for (const category of CATEGORIES) {
+  CATEGORY_ID_ALIASES.set(categoryIdLookupKey(category.id), category.id);
+}
+
+// Observed model variation: "nyttainnovationshojning" (spelling variant, not just
+// punctuation/casing, so it needs its own explicit alias).
+CATEGORY_ID_ALIASES.set(
+  categoryIdLookupKey("nyttainnovationshojning"),
+  "nyttoInnovationshojning"
+);
+
+function canonicalCategoryId(value) {
+  return CATEGORY_ID_ALIASES.get(categoryIdLookupKey(value)) ?? null;
+}
+
+// Normalizes a model-returned, category-id-keyed object (main `categories`,
+// gap-fill `changedCategories`, etc.) to canonical ids. Unrecognized ids are
+// dropped rather than passed through, so untrusted/garbage keys never reach the client.
+function normalizeCategoryRecord(record) {
+  const normalized = {};
+  for (const [rawId, value] of Object.entries(record || {})) {
+    const canonicalId = canonicalCategoryId(rawId);
+    if (canonicalId) normalized[canonicalId] = value;
+  }
+  return normalized;
+}
+
 function buildSystemPrompt() {
   return `You are an assistant that helps an investment committee at Folksam (a Swedish insurance company) reason through AI investment cases. You do NOT decide whether a case is good or bad. You produce a structured, honest, questionable draft assessment that a human committee will discuss, challenge, and refine.
 
@@ -300,6 +341,8 @@ app.post("/api/evaluate", async (req, res) => {
       temperature: 0.2
     });
 
+    parsed.categories = normalizeCategoryRecord(parsed.categories);
+
     Object.values(parsed.categories).forEach((cat) => {
       cat.citations = [];
     });
@@ -344,6 +387,7 @@ app.post("/api/fill-gap", async (req, res) => {
       userMessage,
       temperature: mode === "assume" ? 0.4 : 0.2
     });
+    parsed.changedCategories = normalizeCategoryRecord(parsed.changedCategories);
     res.json({ ...parsed, mode: "live" });
   } catch (err) {
     console.error(err);
