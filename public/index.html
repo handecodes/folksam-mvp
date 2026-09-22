@@ -87,6 +87,15 @@
     resize: vertical;
   }
   textarea:focus { outline: none; border-color: var(--maroon); }
+  /* Collapsible "what should I include?" hint above the case textarea. Mapped to this
+     design's tokens: --border→--rule, --card→--paper-alt, --accent→--maroon, --text→--ink, --muted→--ink-soft. */
+  .input-help { border: 1px solid var(--rule); border-radius: 8px; padding: 0.6rem 0.9rem; margin-bottom: 0.75rem; background: var(--paper-alt); font-size: 0.85rem; }
+  .input-help summary { cursor: pointer; font-weight: 600; color: var(--maroon); }
+  .input-help summary:focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+  .input-help p { margin: 0.6rem 0 0.4rem; color: var(--ink); }
+  .input-help ul { margin: 0.2rem 0 0.4rem; padding-left: 1.2rem; }
+  .input-help li { margin-bottom: 0.25rem; }
+  .input-help-note { color: var(--ink-soft); font-size: 0.8rem; }
   .case-panel-footer { display: flex; align-items: center; justify-content: flex-end; gap: 0.9rem; margin-top: 0.75rem; }
   button {
     background: var(--maroon);
@@ -289,6 +298,19 @@
 
   <div class="case-panel">
     <label class="case-label" for="caseInput">Case description</label>
+    <details class="input-help">
+      <summary>What should I include?</summary>
+      <p>The more of this the case description covers, the fewer gaps get flagged afterward:</p>
+      <ul>
+        <li>What the system or process actually does, and what it replaces or adds to today</li>
+        <li>Roughly how many users, customers, or interactions it affects</li>
+        <li>Estimated cost, one-time and/or ongoing, even a rough range is enough</li>
+        <li>What data it uses and who owns or is responsible for that data</li>
+        <li>The team's current experience with AI or ML, not just general IT skill</li>
+        <li>Expected timeline or rollout stage (pilot, planned, already running)</li>
+      </ul>
+      <p class="input-help-note">Missing something is fine, the tool will flag it and let you fill it in or explore an assumption afterward. This is just a starting checklist, not a requirement.</p>
+    </details>
     <textarea id="caseInput" placeholder="Describe the AI investment case: what it should do, what resources/costs it needs, what data or skills are required..."></textarea>
     <div class="case-panel-footer">
       <div id="status"></div>
