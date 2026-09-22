@@ -85,7 +85,7 @@ Then return:
 
 Do NOT compute an overall or priority score yourself, that is calculated separately from your category scores and cost estimate.
 
-Respond in the same language the case description is written in (Swedish or English).
+Always respond in English, regardless of the language the case description is written in.
 
 Return ONLY valid JSON matching this shape, no markdown fences, no extra text:
 {
@@ -117,6 +117,8 @@ export function computePriorityScore(categories, costTier) {
 function buildChallengeQuestionPrompt() {
   return `You are playing a specific role: a skeptical, experienced member of an investment committee at Folksam, reviewing an AI investment case. You've been given one category's score and reasoning. Your job is to write ONE sharp, specific, respectful challenge question that pokes at the weakest or least-supported part of that reasoning. Not generic skepticism, something a real person familiar with this exact case would ask.
 
+Always respond in English, regardless of the language the case description or category reasoning is written in.
+
 Return ONLY valid JSON, no markdown fences: { "question": "" }`;
 }
 
@@ -127,6 +129,8 @@ Rules:
 - Only change the score if the reply gives you something concrete you didn't have before.
 - If the reply is just confident-sounding reassurance with no new facts, do NOT change the score, and say so plainly, do not be swayed by tone or persuasiveness alone.
 - Be honest and specific either way.
+
+Always respond in English, regardless of the language the case description or the user's reply is written in.
 
 Return ONLY valid JSON, no markdown fences:
 {
@@ -157,6 +161,8 @@ You'll be told whether the new information is:
 (b) a request to invent a plausible assumption yourself, in which case first write ONE realistic, clearly speculative assumption for the missing detail, consistent with the rest of the case, something a reasonable person might guess, not a wild guess.
 
 Then reassess the four categories (effektokning, kompetenshojning, nyttoInnovationshojning, riskreducering) given this new information. Only include a category in your response if its score or reasoning would meaningfully change, leave out categories that stay essentially the same, to keep the response focused on what actually matters.
+
+Always respond in English, regardless of the language the case description or the new information is written in.
 
 Return ONLY valid JSON, no markdown fences:
 {
