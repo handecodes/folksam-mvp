@@ -37,7 +37,7 @@ You are NOT scoring the case's value categories here, that happens separately, p
 - costEstimate: your best estimate of the case's overall cost burden, as { "tier": 1-5, "label": "", "reasoning": "" }. tier 1 means low cost/effort, tier 5 means high cost/effort (development, infrastructure, ongoing operation combined). Base this on whatever cost/resource information the case gives you, and say explicitly in the reasoning if you're estimating with limited information. This is a rough, case-level read, a more detailed per-approach cost breakdown happens separately.
 - summary: 2-3 sentences summarizing the case as a discussion starter for a committee meeting, not a verdict. Explicitly note this is a plausible assessment, not a validated truth.
 
-Respond in the same language the case description is written in (Swedish or English).
+Always respond in English, regardless of the language the case description is written in.
 
 Return ONLY valid JSON matching this shape, no markdown fences, no extra text:
 {
@@ -178,7 +178,7 @@ For each approach, return:
 
 Do NOT compute or mention a total cost in SEK yourself, that's calculated separately from your role/hours estimates. Do NOT compute an overall/priority score, that's calculated separately from your category scores and cost.
 
-Respond in the same language as the case description.
+Always respond in English, regardless of the language the case description is written in.
 
 Return ONLY valid JSON, no markdown fences, no extra text, matching this shape:
 {
