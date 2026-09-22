@@ -1,7 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 dotenv.config();
 
@@ -439,6 +439,12 @@ app.post("/api/challenge/respond", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Folksam AI Investment Analysis MVP running on http://localhost:${PORT}`);
-});
+// Only start listening when run directly (`node server.js`), not when imported
+// by the test suite — importing must not bind a real port as a side effect.
+if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+  app.listen(PORT, () => {
+    console.log(`Folksam AI Investment Analysis MVP running on http://localhost:${PORT}`);
+  });
+}
+
+export { canonicalCategoryId, normalizeCategoryRecord, CATEGORY_ID_ALIASES };

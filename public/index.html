@@ -198,7 +198,7 @@
     </div>
 
     <div class="debate" id="debateBox">
-      <h3>The committee pushes back</h3>
+      <h3 id="debateHeading">The committee pushes back</h3>
       <div class="target" id="debateTarget"></div>
       <div class="question" id="debateQuestion"></div>
       <textarea id="debateDefense" placeholder="Your response..."></textarea>
@@ -228,6 +228,7 @@
   const debateDefense = document.getElementById("debateDefense");
   const debateSubmit = document.getElementById("debateSubmit");
   const debateOutcome = document.getElementById("debateOutcome");
+  const debateHeading = document.getElementById("debateHeading");
 
   // Mirrors the server's COST_MULTIPLIERS so the priority score can be recomputed
   // client-side after a debate changes a category score, without another round trip.
@@ -460,6 +461,7 @@
 
     debateOutcome.style.display = "none";
     debateOutcome.className = "outcome";
+    debateHeading.textContent = "The committee pushes back";
     debateDefense.value = "";
     debateTarget.textContent = `Challenging: ${meta ? meta.swedish : debateTargetId} (currently ${cat.score}/5)`;
     debateQuestion.textContent = "Loading challenge...";
@@ -520,6 +522,7 @@
       debateOutcome.style.display = "block";
 
       if (data.scoreChanged) {
+        debateHeading.textContent = "The committee reconsiders";
         cat.score = data.newScore;
         cat.reasoning = data.reasoning || cat.reasoning;
 
