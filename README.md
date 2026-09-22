@@ -69,22 +69,33 @@ Open http://localhost:3000
   shown, not the whole scorecard again. This doesn't touch the main
   scores on screen, it's a side-by-side "what if" view.
 
+- Posture toggle ("Viewed through:" dropdown in the priority score panel):
+  the same case, same four category scores, same reasoning, reweighted
+  live in the browser for four fixed company postures — Balanced (today's
+  equal-weight default), Risk-averse (weighs riskreducering heavily,
+  discounts novelty), Growth-focused (weighs nytto-/innovationshöjning and
+  effektökning heavily, more risk-tolerant), and Cost-conscious (same
+  category weights, but cost tier swings the score much harder). Weights
+  are fixed constants defined once server-side (`POSTURES` in
+  `server.js`), sent to the client with the evaluation response, and
+  mirrored in a client-side `computeWeightedPriorityScore` so switching is
+  instant with no round trip, same pattern the debate mechanic already
+  uses for `COST_MULTIPLIERS`. Deliberately numbers-only, the underlying
+  category reasoning never changes per posture, keeping the mechanism
+  transparent instead of another black box.
+
 ## Not built yet (from the brainstorm, in rough priority order)
 
-1. The "different paths" view — same case scored under different company
-   postures (risk-averse / growth-focused / cost-conscious). Cheap version:
-   just reweight the four scores that already exist. Richer version: ask
-   the model to reason differently per posture (separate calls).
+1. Side-by-side comparison of multiple cases (the brief's own stretch goal).
 2. Committee memory — logging human overrides over time so the tool
    calibrates to this specific group's risk appetite. Flagged as hard to
    demo live without seeded fake history, since there's no real override
    data yet.
-3. Side-by-side comparison of multiple cases (the brief's own stretch goal).
-4. Audit trail: log each evaluation (input, scores, reasoning, timestamp)
+3. Audit trail: log each evaluation (input, scores, reasoning, timestamp)
    somewhere persistent instead of only showing it in the browser.
-5. Consistency check: run the same case 2-3 times and show the score range
+4. Consistency check: run the same case 2-3 times and show the score range
    instead of a single number, if variance turns out to be a real problem.
-6. The debate mechanic currently only challenges one category, once. It
+5. The debate mechanic currently only challenges one category, once. It
    doesn't yet let you keep arguing multiple rounds, or challenge more
    than one category per case.
 

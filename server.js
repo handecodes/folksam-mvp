@@ -64,13 +64,59 @@ Return ONLY valid JSON matching this shape, no markdown fences, no extra text:
 // average value score, adjusted by a cost multiplier. Higher cost tier pulls the score down.
 const COST_MULTIPLIERS = { 1: 1.3, 2: 1.15, 3: 1.0, 4: 0.85, 5: 0.7 };
 
-function computePriorityScore(categories, costTier) {
-  const scores = Object.values(categories).map((c) => c.score);
-  const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
-  const multiplier = COST_MULTIPLIERS[costTier] ?? 1.0;
+// Posture lenses: the same 4 category scores + cost tier, reweighted for how much a given
+// company stance cares about each category. Numbers only, never re-generates reasoning text —
+// the underlying evidence doesn't change, only how much weight a viewer puts on each part.
+// Fixed, hand-picked weights (not AI-generated) so the math stays transparent and auditable,
+// same philosophy as COST_MULTIPLIERS above.
+const POSTURES = [
+  {
+    id: "balanced",
+    label: "Balanced (default)",
+    description: "Equal weight across all four categories, today's default view.",
+    weights: { effektokning: 1, kompetenshojning: 1, nyttoInnovationshojning: 1, riskreducering: 1 },
+    costMultipliers: COST_MULTIPLIERS
+  },
+  {
+    id: "risk-averse",
+    label: "Risk-averse",
+    description: "Weighs risk reduction heavily, treats novelty/innovation as a risk rather than a virtue.",
+    weights: { effektokning: 1, kompetenshojning: 1, nyttoInnovationshojning: 0.5, riskreducering: 2 },
+    costMultipliers: COST_MULTIPLIERS
+  },
+  {
+    id: "growth-focused",
+    label: "Growth-focused",
+    description: "Weighs innovation and efficiency gains heavily, more tolerant of risk.",
+    weights: { effektokning: 1.5, kompetenshojning: 1, nyttoInnovationshojning: 2, riskreducering: 0.5 },
+    costMultipliers: COST_MULTIPLIERS
+  },
+  {
+    id: "cost-conscious",
+    label: "Cost-conscious",
+    description: "Same weight on the four value categories, but cost tier swings the priority score much harder.",
+    weights: { effektokning: 1, kompetenshojning: 1, nyttoInnovationshojning: 1, riskreducering: 1 },
+    costMultipliers: { 1: 1.6, 2: 1.25, 3: 1.0, 4: 0.7, 5: 0.4 }
+  }
+];
+
+function computeWeightedPriorityScore(categories, costTier, posture) {
+  const weights = posture.weights;
+  let weightedSum = 0;
+  let weightTotal = 0;
+  Object.entries(categories).forEach(([id, cat]) => {
+    const w = weights[id] ?? 1;
+    weightedSum += cat.score * w;
+    weightTotal += w;
+  });
+  const avg = weightTotal > 0 ? weightedSum / weightTotal : 0;
+  const multiplier = posture.costMultipliers[costTier] ?? 1.0;
   const priority = avg * multiplier;
-  // Clamp to a sane 1-5 range for display, cost can push it below 1 or above 5 otherwise.
   return Math.round(Math.min(5, Math.max(0.5, priority)) * 10) / 10;
+}
+
+function computePriorityScore(categories, costTier) {
+  return computeWeightedPriorityScore(categories, costTier, POSTURES[0]);
 }
 
 function buildChallengeQuestionPrompt() {
@@ -288,7 +334,7 @@ app.post("/api/evaluate", async (req, res) => {
     // so the UI/flow is fully testable before hackathon day.
     const mockResult = buildMockResult(caseText);
     mockResult.priorityScore = computePriorityScore(mockResult.categories, mockResult.costEstimate.tier);
-    return res.json({ result: mockResult, categories: CATEGORIES, mode: "mock" });
+    return res.json({ result: mockResult, categories: CATEGORIES, postures: POSTURES, mode: "mock" });
   }
 
   try {
@@ -310,7 +356,7 @@ app.post("/api/evaluate", async (req, res) => {
 
     parsed.priorityScore = computePriorityScore(parsed.categories, parsed.costEstimate?.tier ?? 3);
 
-    res.json({ result: parsed, categories: CATEGORIES, mode: "live" });
+    res.json({ result: parsed, categories: CATEGORIES, postures: POSTURES, mode: "live" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error calling the model", detail: String(err) });

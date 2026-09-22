@@ -5,206 +5,359 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Folksam AI Investment Analysis — MVP</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Source+Sans+3:wght@400;500;600&display=swap');
+
   :root {
-    --bg: #f6f7f9;
-    --card: #ffffff;
-    --border: #e2e5ea;
-    --text: #1c2026;
-    --muted: #6b7280;
-    --accent: #2f5fd6;
-    --good: #1e8e5a;
-    --mid: #b8860b;
-    --low: #b3401f;
+    /* Warm, paper-toned editorial palette (deep red inspired by Folksam's own brand red),
+       chosen deliberately over the default blue-on-white SaaS look. */
+    --bg: #f2ecdf;
+    --paper: #fffcf5;
+    --paper-alt: #eadfc7;
+    --rule: #ddceac;
+    --ink: #241a12;
+    --ink-soft: #6e6151;
+    --maroon: #7e2430;
+    --maroon-dark: #591821;
+    --good: #3f6b46;
+    --mid: #97671f;
+    --low: #9c3a2e;
+    --serif: 'Lora', Georgia, 'Times New Roman', serif;
+    --sans: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--sans);
     background: var(--bg);
-    color: var(--text);
-    padding: 2rem 1rem 4rem;
+    background-image: radial-gradient(circle at 12% 8%, #fbf6e8 0%, transparent 45%);
+    color: var(--ink);
+    padding: 3rem 1.25rem 5rem;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
-  .sub { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: 0.95rem; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+
+  /* Masthead: report title block instead of a generic app header */
+  .masthead { border-bottom: 2px solid var(--maroon); padding-bottom: 1.1rem; margin-bottom: 1.6rem; }
+  .eyebrow {
+    display: block;
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--maroon);
+    margin-bottom: 0.5rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 1.9rem;
+    margin: 0 0 0.35rem;
+    color: var(--ink);
+  }
+  .sub { color: var(--ink-soft); margin: 0; font-size: 0.98rem; font-style: italic; max-width: 640px; }
+
+  /* Case input styled as a document panel, not a chat box */
+  .case-panel {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1.1rem 1.25rem 1.25rem;
+    margin-bottom: 1.75rem;
+  }
+  .case-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    margin-bottom: 0.5rem;
+  }
   textarea {
     width: 100%;
-    min-height: 160px;
+    min-height: 150px;
     padding: 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-family: inherit;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: #fffefb;
+    font-family: var(--sans);
     font-size: 0.95rem;
+    color: var(--ink);
     resize: vertical;
   }
+  textarea:focus { outline: none; border-color: var(--maroon); }
+  .case-panel-footer { display: flex; align-items: center; justify-content: flex-end; gap: 0.9rem; margin-top: 0.75rem; }
   button {
-    margin-top: 0.75rem;
-    background: var(--accent);
-    color: white;
+    background: var(--maroon);
+    color: #fbf3ea;
     border: none;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-size: 0.95rem;
+    padding: 0.6rem 1.4rem;
+    border-radius: 3px;
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     cursor: pointer;
+    transition: background 0.15s ease;
   }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-  #status { margin-top: 0.75rem; color: var(--muted); font-size: 0.9rem; }
+  button:hover:not(:disabled) { background: var(--maroon-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #status { color: var(--ink-soft); font-size: 0.88rem; }
   .error { color: var(--low); }
   .mock-banner {
-    background: #fbf1dc;
-    color: #6b4c00;
-    border: 1px solid #e8cf94;
-    border-radius: 8px;
+    background: var(--paper-alt);
+    color: #5a4318;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--mid);
+    border-radius: 3px;
     padding: 0.6rem 0.9rem;
     font-size: 0.85rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
     display: none;
   }
 
-  .results { margin-top: 2rem; display: none; }
-  .overall {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-  }
-  .overall h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
-  .overall .score { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-  .overall p { color: var(--muted); font-size: 0.9rem; margin: 0.4rem 0 0; }
+  .results { margin-top: 0.5rem; display: none; }
 
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  /* Two-column report layout: sticky scorecard beside the numbered assessment list,
+     replacing the old single-column stack of identical cards. */
+  .report-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.75rem; align-items: start; }
+  @media (max-width: 780px) { .report-layout { grid-template-columns: 1fr; } }
+  .report-side { position: sticky; top: 1.5rem; }
+  .report-main { min-width: 0; }
+
+  .overall {
+    background: var(--maroon);
+    color: #fbf3ea;
+    border-radius: 4px;
+    padding: 1.4rem 1.3rem;
+  }
+  .overall h2 {
+    margin: 0 0 0.5rem;
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #e8c9c9;
+  }
+  .overall .score { font-family: var(--serif); font-size: 2.6rem; font-weight: 700; line-height: 1; color: #fffefb; }
+  .overall p { color: #f0ddd2; font-size: 0.88rem; margin: 0.6rem 0 0; }
+  .overall .priority-note { color: #d9a8a8; font-size: 0.78rem; }
+
+  .grid { display: block; counter-reset: catindex; }
 
   .cat-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--maroon);
+    border-radius: 3px;
+    padding: 0.95rem 1.1rem 0.95rem 3.1rem;
+    margin-bottom: 0.7rem;
+  }
+  .cat-card::before {
+    counter-increment: catindex;
+    content: counter(catindex, decimal-leading-zero);
+    position: absolute;
+    left: 1.0rem;
+    top: 0.95rem;
+    font-family: var(--serif);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
   }
   .cat-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .cat-name { font-weight: 600; font-size: 0.95rem; }
-  .cat-score { font-weight: 700; color: var(--accent); }
-  .bar { height: 6px; background: var(--border); border-radius: 3px; margin: 0.4rem 0 0.5rem; overflow: hidden; }
-  .bar-fill { height: 100%; background: var(--accent); }
-  .cat-reason { font-size: 0.88rem; color: var(--text); margin: 0; }
-  .citations { margin: 0.5rem 0 0; padding: 0; list-style: none; }
-  .citations li { font-size: 0.78rem; margin-top: 0.2rem; }
-  .citations a { color: var(--accent); text-decoration: none; }
-  .citations a:hover { text-decoration: underline; }
+  .cat-name { font-family: var(--serif); font-weight: 600; font-size: 1.02rem; color: var(--ink); }
+  .cat-score { font-family: var(--serif); font-weight: 700; font-size: 1.1rem; color: var(--maroon); }
+  .bar { height: 4px; background: var(--rule); border-radius: 2px; margin: 0.5rem 0 0.6rem; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--maroon); }
+  .cat-reason { font-size: 0.9rem; color: var(--ink); margin: 0; line-height: 1.45; }
+  .citations { margin: 0.55rem 0 0; padding: 0; list-style: none; }
+  .citations li { font-size: 0.78rem; margin-top: 0.25rem; }
+  .citations a { color: var(--maroon); text-decoration: none; border-bottom: 1px dotted var(--maroon); }
+  .citations a:hover { border-bottom-style: solid; }
   .badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     font-size: 0.72rem;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    margin-top: 0.4rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.05em;
+    background: none;
+    padding: 0;
   }
-  .badge.high { background: #e3f5ec; color: var(--good); }
-  .badge.medium { background: #fbf1dc; color: var(--mid); }
-  .badge.low { background: #fbe6e0; color: var(--low); }
+  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .badge.high { color: var(--good); }
+  .badge.high::before { background: var(--good); }
+  .badge.medium { color: var(--mid); }
+  .badge.medium::before { background: var(--mid); }
+  .badge.low { color: var(--low); }
+  .badge.low::before { background: var(--low); }
 
   .missing {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
-    margin-top: 0.75rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    margin-top: 1.1rem;
   }
-  .missing h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
-  .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; color: var(--text); }
-  .missing p.none { color: var(--muted); font-size: 0.88rem; margin: 0; }
-  .missing li { margin-bottom: 0.6rem; }
-  .gap-actions { margin-top: 0.3rem; }
+  .missing h3 {
+    margin: 0 0 0.6rem;
+    font-family: var(--serif);
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; color: var(--ink); }
+  .missing p.none { color: var(--ink-soft); font-size: 0.9rem; margin: 0; font-style: italic; }
+  .missing li { margin-bottom: 0.7rem; }
+  .gap-actions { margin-top: 0.35rem; }
   .gap-actions button {
-    margin: 0.3rem 0.4rem 0 0;
-    padding: 0.25rem 0.6rem;
+    margin: 0.3rem 0.9rem 0 0;
+    padding: 0;
     font-size: 0.78rem;
-    background: var(--border);
-    color: var(--text);
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    background: none;
+    color: var(--maroon);
+    border-bottom: 1px solid var(--maroon);
+    border-radius: 0;
   }
-  .gap-answer-box { margin-top: 0.4rem; display: none; }
+  .gap-actions button:hover:not(:disabled) { background: none; color: var(--maroon-dark); }
+  .gap-answer-box { margin-top: 0.5rem; display: none; }
   .gap-answer-box textarea { min-height: 50px; font-size: 0.85rem; }
   .gap-result {
-    margin-top: 0.4rem;
-    padding: 0.5rem 0.6rem;
-    border-radius: 6px;
-    background: #eef1fb;
-    font-size: 0.82rem;
+    margin-top: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: 3px;
+    border-left: 3px solid var(--mid);
+    background: var(--paper-alt);
+    font-size: 0.84rem;
     display: none;
   }
-  .gap-result .assumption { font-style: italic; color: var(--muted); margin-bottom: 0.3rem; }
+  .gap-result .assumption { font-style: italic; color: var(--ink-soft); margin-bottom: 0.3rem; }
   .gap-result .change { margin-top: 0.2rem; }
 
-  .cost-row { display: flex; gap: 0.75rem; align-items: baseline; margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
-  .cost-tier { font-weight: 700; }
-  .cost-reason { color: var(--muted); font-size: 0.85rem; }
-  .priority-note { color: var(--muted); font-size: 0.82rem; margin-top: 0.3rem; }
+  .cost-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: baseline; margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(251, 243, 234, 0.25); }
+  .cost-row span:first-child { color: #d9a8a8; font-size: 0.8rem; }
+  .cost-tier { font-family: var(--serif); font-weight: 700; color: #fffefb; }
+  .cost-reason { color: #e8c9c9; font-size: 0.8rem; }
+  .priority-note { color: #d9a8a8; font-size: 0.78rem; margin-top: 0.35rem; }
+
+  .posture-row { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(251, 243, 234, 0.25); }
+  .posture-label { display: block; color: #d9a8a8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem; }
+  #postureSelect {
+    width: 100%;
+    background: #6f1f29;
+    color: #fffefb;
+    border: 1px solid rgba(251, 243, 234, 0.35);
+    border-radius: 3px;
+    padding: 0.4rem 0.5rem;
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+  .posture-desc { color: #e8c9c9; font-size: 0.78rem; margin: 0.5rem 0 0; font-style: italic; }
 
   .debate {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
-    margin-top: 0.75rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.1rem 1.2rem;
+    margin-top: 1.1rem;
     display: none;
   }
-  .debate h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
-  .debate .target { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.5rem; }
-  .debate .question { font-size: 0.92rem; margin-bottom: 0.6rem; }
+  .debate h3 {
+    margin: 0 0 0.6rem;
+    font-family: var(--serif);
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .debate .target { color: var(--ink-soft); font-size: 0.82rem; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .debate .question {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.98rem;
+    margin-bottom: 0.75rem;
+    padding-left: 0.9rem;
+    border-left: 3px solid var(--maroon);
+    color: var(--ink);
+  }
   .debate textarea { min-height: 80px; }
   .debate .outcome {
-    margin-top: 0.75rem;
-    padding: 0.6rem 0.75rem;
-    border-radius: 8px;
+    margin-top: 0.85rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: 3px;
     font-size: 0.88rem;
     display: none;
   }
-  .debate .outcome.changed { background: #e3f5ec; }
-  .debate .outcome.unchanged { background: #f1f2f4; }
+  .debate .outcome.changed { background: #e7efe4; border-left: 3px solid var(--good); }
+  .debate .outcome.unchanged { background: var(--paper-alt); border-left: 3px solid var(--rule); }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>AI Investment Analysis — MVP</h1>
-  <p class="sub">Paste an AI investment case description below. This gives a structured, reasoned starting point for discussion, not a final answer.</p>
+  <div class="masthead">
+    <span class="eyebrow">Investment Committee &middot; Discussion Draft</span>
+    <h1>AI Investment Case Assessment</h1>
+    <p class="sub">Paste a case description below for a structured, reasoned starting point — a draft to question and refine at the table, not a verdict.</p>
+  </div>
 
   <div class="mock-banner" id="mockBanner">No OpenRouter key set — this is running in mock mode with fake data. Add OPENROUTER_API_KEY to .env for real scoring.</div>
 
-  <textarea id="caseInput" placeholder="Describe the AI investment case: what it should do, what resources/costs it needs, what data or skills are required..."></textarea>
-  <br />
-  <button id="submitBtn">Evaluate case</button>
-  <div id="status"></div>
+  <div class="case-panel">
+    <label class="case-label" for="caseInput">Case description</label>
+    <textarea id="caseInput" placeholder="Describe the AI investment case: what it should do, what resources/costs it needs, what data or skills are required..."></textarea>
+    <div class="case-panel-footer">
+      <div id="status"></div>
+      <button id="submitBtn">Evaluate case</button>
+    </div>
+  </div>
 
   <div class="results" id="results">
-    <div class="overall">
-      <h2>Priority score</h2>
-      <div class="score" id="overallScore">-</div>
-      <p class="priority-note" id="priorityNote"></p>
-      <p id="summary"></p>
-      <div class="cost-row">
-        <span>Estimated cost:</span>
-        <span class="cost-tier" id="costTier">-</span>
-        <span class="cost-reason" id="costReason"></span>
+    <div class="report-layout">
+      <div class="report-side">
+        <div class="overall">
+          <h2>Priority score</h2>
+          <div class="score" id="overallScore">-</div>
+          <p class="priority-note" id="priorityNote"></p>
+          <p id="summary"></p>
+          <div class="cost-row">
+            <span>Estimated cost:</span>
+            <span class="cost-tier" id="costTier">-</span>
+            <span class="cost-reason" id="costReason"></span>
+          </div>
+          <div class="posture-row">
+            <label class="posture-label" for="postureSelect">Viewed through:</label>
+            <select id="postureSelect"></select>
+            <p class="posture-desc" id="postureDesc"></p>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="grid" id="categoryGrid"></div>
+      <div class="report-main">
+        <div class="grid" id="categoryGrid"></div>
 
-    <div class="missing">
-      <h3>What's missing from this case</h3>
-      <div id="missingInfo"></div>
-    </div>
+        <div class="missing">
+          <h3>What's missing from this case</h3>
+          <div id="missingInfo"></div>
+        </div>
 
-    <div class="debate" id="debateBox">
-      <h3>The committee pushes back</h3>
-      <div class="target" id="debateTarget"></div>
-      <div class="question" id="debateQuestion"></div>
-      <textarea id="debateDefense" placeholder="Your response..."></textarea>
-      <br />
-      <button id="debateSubmit">Respond</button>
-      <div class="outcome" id="debateOutcome"></div>
+        <div class="debate" id="debateBox">
+          <h3>The committee pushes back</h3>
+          <div class="target" id="debateTarget"></div>
+          <div class="question" id="debateQuestion"></div>
+          <textarea id="debateDefense" placeholder="Your response..."></textarea>
+          <br />
+          <button id="debateSubmit">Respond</button>
+          <div class="outcome" id="debateOutcome"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -228,14 +381,24 @@
   const debateDefense = document.getElementById("debateDefense");
   const debateSubmit = document.getElementById("debateSubmit");
   const debateOutcome = document.getElementById("debateOutcome");
+  const postureSelect = document.getElementById("postureSelect");
+  const postureDesc = document.getElementById("postureDesc");
 
-  // Mirrors the server's COST_MULTIPLIERS so the priority score can be recomputed
-  // client-side after a debate changes a category score, without another round trip.
-  const COST_MULTIPLIERS = { 1: 1.3, 2: 1.15, 3: 1.0, 4: 0.85, 5: 0.7 };
-  function computePriorityScore(categories, costTier) {
-    const scores = Object.values(categories).map((c) => c.score);
-    const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
-    const priority = avg * (COST_MULTIPLIERS[costTier] ?? 1.0);
+  // Posture lens: reweights the same category scores + cost tier for how much a given
+  // company stance cares about each category. Numbers only, mirrors the server's
+  // computeWeightedPriorityScore/POSTURES so switching postures is instant, no round trip,
+  // and never touches the underlying reasoning text.
+  function computeWeightedPriorityScore(categories, costTier, posture) {
+    let weightedSum = 0;
+    let weightTotal = 0;
+    Object.entries(categories).forEach(([id, cat]) => {
+      const w = posture.weights[id] ?? 1;
+      weightedSum += cat.score * w;
+      weightTotal += w;
+    });
+    const avg = weightTotal > 0 ? weightedSum / weightTotal : 0;
+    const multiplier = posture.costMultipliers[costTier] ?? 1.0;
+    const priority = avg * multiplier;
     return Math.round(Math.min(5, Math.max(0.5, priority)) * 10) / 10;
   }
 
@@ -243,7 +406,37 @@
   let currentCaseText = "";
   let currentResult = null;
   let currentCategoriesMeta = [];
+  let currentPostures = [];
+  let currentPostureId = "balanced";
   let debateTargetId = null;
+
+  function populatePostures(postures) {
+    currentPostures = postures || [];
+    postureSelect.innerHTML = "";
+    currentPostures.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.label;
+      postureSelect.appendChild(opt);
+    });
+    currentPostureId = currentPostures[0]?.id || "balanced";
+    postureSelect.value = currentPostureId;
+  }
+
+  function refreshPriorityScore() {
+    if (!currentResult) return;
+    const posture = currentPostures.find((p) => p.id === currentPostureId) || currentPostures[0];
+    if (!posture) return;
+    const score = computeWeightedPriorityScore(currentResult.categories, currentResult.costEstimate?.tier ?? 3, posture);
+    currentResult.priorityScore = score;
+    overallScore.textContent = `${score} / 5`;
+    postureDesc.textContent = posture.description || "";
+  }
+
+  postureSelect.addEventListener("change", () => {
+    currentPostureId = postureSelect.value;
+    refreshPriorityScore();
+  });
 
   // Check mode on load so the banner shows up even before the first evaluate call.
   fetch("/api/health")
@@ -404,8 +597,9 @@
       currentCaseText = caseText;
       currentResult = result;
       currentCategoriesMeta = data.categories;
+      populatePostures(data.postures);
 
-      overallScore.textContent = `${result.priorityScore} / 5`;
+      refreshPriorityScore();
       priorityNote.textContent = "Value score weighed against estimated cost, ranking indicator, not a verdict.";
       summary.textContent = result.summary || "";
       renderCategories(data.categories, result.categories);
@@ -517,9 +711,7 @@
           card.querySelector('[data-role="reason"]').textContent = cat.reasoning;
         }
 
-        const newPriority = computePriorityScore(currentResult.categories, currentResult.costEstimate?.tier ?? 3);
-        currentResult.priorityScore = newPriority;
-        overallScore.textContent = `${newPriority} / 5`;
+        refreshPriorityScore();
       }
     } catch (err) {
       debateOutcome.textContent = "Request failed: " + err.message;
