@@ -9,8 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
-// Set WEB_SEARCH=false in .env to turn off live grounding (e.g. to save credits or speed things up).
-const WEB_SEARCH_ENABLED = process.env.WEB_SEARCH !== "false";
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -24,36 +22,25 @@ const CATEGORIES = [
   { id: "riskreducering", swedish: "Riskreducering", english: "Risk reduction" }
 ];
 
+// Case-level pass: no longer scores the four categories here. Category scoring
+// (effektokning/kompetenshojning/nyttoInnovationshojning/riskreducering) now happens
+// once PER build approach (ai-only / mixed / dev-team) in buildApproachesPrompt,
+// because the score genuinely depends on which resources/team are doing the work,
+// not just on the case in the abstract. This pass only covers what's genuinely
+// case-level: what's missing from the description, overall cost burden, and a
+// plain-language summary for the committee.
 function buildSystemPrompt() {
   return `You are an assistant that helps an investment committee at Folksam (a Swedish insurance company) reason through AI investment cases. You do NOT decide whether a case is good or bad. You produce a structured, honest, questionable draft assessment that a human committee will discuss, challenge, and refine.
 
-Score the submitted AI investment case on exactly these four categories:
-${CATEGORIES.map((c) => `- ${c.id} (${c.swedish} / ${c.english})`).join("\n")}
-
-For each category, return:
-- score: an integer from 1 (very weak) to 5 (very strong)
-- reasoning: 2-4 sentences explaining specifically WHY this case gets that score, grounded in details from the case description. Do not restate generic AI benefits, tie the reasoning to what the case actually says (or doesn't say).
-- confidence: "low", "medium", or "high" — how confident you are in this score given the information provided. Use "low" when the case description doesn't give you enough to judge that category well.
-
-Leave citations as an empty array for every category, that's filled in separately afterward by a dedicated search pass per category, don't try to do it here.
-
-Then return:
-- missingInfo: a short list of concrete pieces of information that, if missing from the case description, would materially change your assessment (e.g. "no mention of who owns the data", "no rollout cost estimate"). Empty array if the case is well specified.
-- costEstimate: your best estimate of the case's cost burden, as { "tier": 1-5, "label": "", "reasoning": "" }. tier 1 means low cost/effort, tier 5 means high cost/effort (development, infrastructure, ongoing operation combined). Base this on whatever cost/resource information the case gives you, and say explicitly in the reasoning if you're estimating with limited information.
+You are NOT scoring the case's value categories here, that happens separately, per build approach, elsewhere. Here you only return:
+- missingInfo: a short list of concrete pieces of information that, if missing from the case description, would materially change an assessment of it (e.g. "no mention of who owns the data", "no rollout cost estimate", "no team or resourcing mentioned at all"). Empty array if the case is well specified.
+- costEstimate: your best estimate of the case's overall cost burden, as { "tier": 1-5, "label": "", "reasoning": "" }. tier 1 means low cost/effort, tier 5 means high cost/effort (development, infrastructure, ongoing operation combined). Base this on whatever cost/resource information the case gives you, and say explicitly in the reasoning if you're estimating with limited information. This is a rough, case-level read, a more detailed per-approach cost breakdown happens separately.
 - summary: 2-3 sentences summarizing the case as a discussion starter for a committee meeting, not a verdict. Explicitly note this is a plausible assessment, not a validated truth.
-
-Do NOT compute an overall or priority score yourself, that is calculated separately from your category scores and cost estimate.
 
 Respond in the same language the case description is written in (Swedish or English).
 
 Return ONLY valid JSON matching this shape, no markdown fences, no extra text:
 {
-  "categories": {
-    "effektokning": { "score": 1, "reasoning": "", "confidence": "low", "citations": [] },
-    "kompetenshojning": { "score": 1, "reasoning": "", "confidence": "low", "citations": [] },
-    "nyttoInnovationshojning": { "score": 1, "reasoning": "", "confidence": "low", "citations": [] },
-    "riskreducering": { "score": 1, "reasoning": "", "confidence": "low", "citations": [] }
-  },
   "missingInfo": [],
   "costEstimate": { "tier": 1, "label": "", "reasoning": "" },
   "summary": ""
@@ -119,58 +106,95 @@ function computePriorityScore(categories, costTier) {
   return computeWeightedPriorityScore(categories, costTier, POSTURES[0]);
 }
 
-function buildChallengeQuestionPrompt() {
-  return `You are playing a specific role: a skeptical, experienced member of an investment committee at Folksam, reviewing an AI investment case. You've been given one category's score and reasoning. Your job is to write ONE sharp, specific, respectful challenge question that pokes at the weakest or least-supported part of that reasoning. Not generic skepticism, something a real person familiar with this exact case would ask.
+// Fixed display/response order for the three build approaches: AI-only, Mixed,
+// Dev-team-only, mixed in the middle since it's the approach whose whole point is
+// sitting between the two extremes on cost/risk/effort.
+const APPROACH_ORDER = ["ai-only", "mixed", "dev-team"];
 
-Return ONLY valid JSON, no markdown fences: { "question": "" }`;
+function sortApproaches(approaches) {
+  const byId = new Map((approaches || []).map((a) => [a.id, a]));
+  return APPROACH_ORDER.map((id) => byId.get(id)).filter(Boolean);
 }
 
-function buildChallengeResponsePrompt() {
-  return `You are the same skeptical committee member. The user has replied to your challenge question defending their case. Decide honestly: does their reply add genuine new concrete information (numbers, specifics, plans, evidence) that should change the category's score, or is it just restated confidence, reassurance, or vague optimism with no new substance?
+// --- Build-approach comparison (AI-only / dev-team-only / mixed) ---
+// Cost is computed here in code from a fixed hourly rate card, same philosophy as
+// COST_MULTIPLIERS above: the model estimates *structure* (roles, hours, weeks,
+// required inputs, risk read), the server turns that into SEK so every run is
+// comparable and auditable instead of the model just inventing a total.
+const ROLE_RATES_SEK_PER_HOUR = {
+  junior: 450, // e.g. a junior developer, ~1-2 years experience
+  mid: 800, // e.g. a mid-level generalist developer
+  senior: 1200, // e.g. a senior/principal developer or engineering lead
+  specialist: 1300, // e.g. security, data governance, ML/AI engineering specialists
+  lead: 1500, // e.g. architect / engineering lead owning the overall decision
+  ai: 200 // AI build capacity: token/API cost + tooling license, amortized per hour of work produced
+};
+const SENIORITY_LEVELS = Object.keys(ROLE_RATES_SEK_PER_HOUR);
 
-Rules:
-- Only change the score if the reply gives you something concrete you didn't have before.
-- If the reply is just confident-sounding reassurance with no new facts, do NOT change the score, and say so plainly, do not be swayed by tone or persuasiveness alone.
-- Be honest and specific either way.
+const COST_TIER_LABELS = { 1: "Very low", 2: "Low", 3: "Medium", 4: "High", 5: "Very high" };
 
-Return ONLY valid JSON, no markdown fences:
+function bucketCostToTier(sek) {
+  if (sek <= 20000) return 1;
+  if (sek <= 60000) return 2;
+  if (sek <= 150000) return 3;
+  if (sek <= 400000) return 4;
+  return 5;
+}
+
+function computeApproachCost(approach) {
+  const roles = Array.isArray(approach.roles) ? approach.roles : [];
+  const sek = roles.reduce((sum, r) => {
+    const rate = ROLE_RATES_SEK_PER_HOUR[r.seniority] ?? ROLE_RATES_SEK_PER_HOUR.mid;
+    const count = Number(r.count) || 1;
+    const hours = Number(r.hoursEstimate) || 0;
+    return sum + rate * count * hours;
+  }, 0);
+  return { costSEK: Math.round(sek), costTier: bucketCostToTier(sek), costLabel: COST_TIER_LABELS[bucketCostToTier(sek)] };
+}
+
+function buildApproachesPrompt() {
+  return `You are helping a Folksam investment committee understand what it would actually take to BUILD a proposed AI investment case, compared across three different build approaches. This is a companion analysis to the value/cost/risk scoring, focused specifically on team composition, timeline, and required inputs, so the committee can see concrete tradeoffs side by side, not just abstract scores.
+
+Given the case description, produce exactly three approaches, always in this order and always all three, even if one is a poor fit (say so in its narrative/riskNotes instead of omitting it):
+
+1. id "ai-only": built primarily by AI coding agents/assistants, with the minimum viable human oversight (someone must still define acceptance criteria and sign off, that person still counts as a role).
+2. id "dev-team": built entirely by a human developer team, no AI coding assistance anywhere in the build.
+3. id "mixed": the work is split by module/component, AI builds the well-patterned, low-criticality, easily-verifiable parts, named human specialists build the ambiguous/critical/security-sensitive parts, and every AI-built module has a named human reviewer.
+
+For each approach, return:
+- narrative: 2-3 sentences, specific to this case, describing how the work would actually get done under this approach.
+- roles: an array of role lines needed, each { "roleLabel": short human-readable role name (e.g. "Senior full-stack developer", "Security engineer", "AI build capacity"), "seniority": one of exactly ${JSON.stringify(SENIORITY_LEVELS)} (use "ai" only for AI build-capacity lines), "count": integer number of people/units in this role, "hoursEstimate": integer estimated hours PER PERSON/UNIT for the whole project (not per week) }. Every approach must include at least one role. "ai-only" must still include at least one human role (the sign-off/reviewer) at low hours. Ground hours in the case's apparent size/complexity, don't default to the same number every time.
+- timeWeeks: integer, estimated elapsed calendar weeks to deliver (accounting for realistic parallelization, not just total hours / people).
+- requiredInputs: array of concrete things that must exist BEFORE this specific approach can start (e.g. "clear acceptance criteria and test cases" for ai-only, "a domain expert available for questions" for dev-team, "a named reviewer per AI-built module" for mixed). Specific to this case and this approach, not generic.
+- riskNotes: 1-2 sentences on what's most likely to go wrong with this specific approach for this specific case.
+- moduleSplit: for "mixed" only, an array of { "module": short name, "builder": "ai" or "human", "reviewer": role/person description, "rationale": short reason }. Empty array for "ai-only" and "dev-team".
+- categories: score THIS SPECIFIC APPROACH (not the case in the abstract) on exactly these four categories: ${CATEGORIES.map((c) => `${c.id} (${c.swedish} / ${c.english})`).join(", ")}. For each, return { "score": 1-5, "reasoning": "", "confidence": "low"|"medium"|"high" }.
+  The scoring LOGIC is the same across all three approaches, only the inputs change:
+  * effektokning (efficiency gain): how much faster/cheaper delivery is under THIS approach's actual roles/hours/timeWeeks you just estimated above, not a generic "AI is fast" assumption.
+  * kompetenshojning (skill/competence increase): how much the specific roles you named in THIS approach would grow their skills or lower the skill barrier to get started, given who (or what) is actually doing the work.
+  * nyttoInnovationshojning (benefit/innovation increase): whether THIS approach's team/resource mix realistically enables trying things that wouldn't be feasible otherwise, given its actual time/cost constraints.
+  * riskreducering (risk reduction): this is the resources check — does THIS approach's specific team/reviewer setup (the roles, and for mixed, the named reviewer per AI-built module) actually cover the case's criticality and security/data-sensitivity needs, or does it leave gaps? An approach with no named reviewer for a critical module, or with critical work assigned to a mismatched seniority level, must score LOWER here than one with matched, adequate review, regardless of which approach it is. Low confidence when the case doesn't give you enough to judge given that approach's specific resourcing.
+  Do not just copy the same four scores across all three approaches, each approach's roles/hours/reviewers are different, so the reasoning and scores should genuinely differ approach to approach.
+
+Do NOT compute or mention a total cost in SEK yourself, that's calculated separately from your role/hours estimates. Do NOT compute an overall/priority score, that's calculated separately from your category scores and cost.
+
+Respond in the same language as the case description.
+
+Return ONLY valid JSON, no markdown fences, no extra text, matching this shape:
 {
-  "scoreChanged": false,
-  "newScore": 1,
-  "reasoning": "",
-  "verdictNote": ""
+  "approaches": [
+    { "id": "ai-only", "narrative": "", "roles": [{ "roleLabel": "", "seniority": "lead", "count": 1, "hoursEstimate": 1 }], "timeWeeks": 1, "requiredInputs": [], "riskNotes": "", "moduleSplit": [], "categories": { "effektokning": { "score": 1, "reasoning": "", "confidence": "low" }, "kompetenshojning": { "score": 1, "reasoning": "", "confidence": "low" }, "nyttoInnovationshojning": { "score": 1, "reasoning": "", "confidence": "low" }, "riskreducering": { "score": 1, "reasoning": "", "confidence": "low" } } },
+    { "id": "mixed", "narrative": "", "roles": [], "timeWeeks": 1, "requiredInputs": [], "riskNotes": "", "moduleSplit": [], "categories": {} },
+    { "id": "dev-team", "narrative": "", "roles": [], "timeWeeks": 1, "requiredInputs": [], "riskNotes": "", "moduleSplit": [], "categories": {} }
+  ]
 }`;
 }
 
-const SOURCING_PREFERENCE = `Sourcing preference: prefer peer-reviewed research, established analyst firms (e.g. McKinsey, Gartner), and public company reports. Avoid forum posts, unverified blogs, or informal internet commentary. If search only turns up low-quality sources, return no citations rather than citing those. Never invent a title or URL, only cite something you actually have in front of you from search results.`;
-
-function buildCitationSearchPrompt() {
-  return `You are searching for real, credible sources to support or check one specific claim made about an AI investment case at Folksam, a Swedish insurance company. You will be given the claim (one category's score and reasoning). Search for 0-2 real sources that genuinely relate to this specific claim, a comparable real-world case, a relevant statistic, a report finding.
-
-${SOURCING_PREFERENCE}
-
-If nothing credible and genuinely relevant turns up, return an empty array, that's a normal and expected outcome, don't force a weak match.
-
-Return ONLY valid JSON, no markdown fences: { "citations": [{ "title": "", "url": "" }] }`;
-}
-
-function buildGapFillPrompt() {
-  return `You are reassessing an AI investment case for a Folksam investment committee, after new information has been added to fill a gap that was previously flagged as missing.
-
-You'll be told whether the new information is:
-(a) a real answer the user supplied, treat it as fact, or
-(b) a request to invent a plausible assumption yourself, in which case first write ONE realistic, clearly speculative assumption for the missing detail, consistent with the rest of the case, something a reasonable person might guess, not a wild guess.
-
-Then reassess the four categories (effektokning, kompetenshojning, nyttoInnovationshojning, riskreducering) given this new information. Only include a category in your response if its score or reasoning would meaningfully change, leave out categories that stay essentially the same, to keep the response focused on what actually matters.
-
-Return ONLY valid JSON, no markdown fences:
-{
-  "assumption": "" or null if the user supplied a real answer,
-  "changedCategories": {
-    "categoryId": { "score": 1, "reasoning": "" }
-  }
-}`;
-}
+const APPROACH_LABELS = {
+  "ai-only": "AI-only",
+  "dev-team": "Dev team only",
+  mixed: "Mixed (AI + team)"
+};
 
 async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSearch = false }) {
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -206,77 +230,102 @@ async function callModel({ systemPrompt, userMessage, temperature = 0.2, webSear
   }
 }
 
-// Runs one dedicated, web-search-grounded call per category to find real citations,
-// instead of relying on a single shared search pass for all four at once. A shared
-// pass tends to surface at most one or two sources total; doing it per category
-// gives each claim its own real chance at a real source.
-async function findCitationsPerCategory(categories) {
-  const entries = Object.entries(categories);
-  const results = await Promise.allSettled(
-    entries.map(([id, cat]) =>
-      callModel({
-        systemPrompt: buildCitationSearchPrompt(),
-        userMessage: `Category: ${id}\nScore: ${cat.score}/5\nReasoning: ${cat.reasoning}`,
-        temperature: 0.2,
-        webSearch: true
-      })
-    )
-  );
-  results.forEach((result, i) => {
-    const [id] = entries[i];
-    if (result.status === "fulfilled" && Array.isArray(result.value.citations)) {
-      categories[id].citations = result.value.citations;
-    } else {
-      categories[id].citations = [];
-      if (result.status === "rejected") {
-        console.error(`Citation search failed for ${id}:`, result.reason?.message);
-      }
-    }
-  });
-}
-
 function hasRealKey() {
   const apiKey = process.env.OPENROUTER_API_KEY;
   return Boolean(apiKey) && apiKey !== "your_key_here";
 }
 
+// Mock category scores per approach: same shape the model would produce, deliberately
+// different score/confidence per approach so the mock UI demonstrates the point
+// (riskreducering in particular should read lowest for ai-only, highest for dev-team,
+// mixed in between, since mixed and dev-team both have a named human reviewer while
+// ai-only's review is thin, matching the "resources check" logic in the real prompt).
+function mockCategories({ effekt, kompetens, nytto, risk, riskReasoning }) {
+  return {
+    effektokning: { score: effekt, reasoning: "MOCK DATA. Efficiency read based on this approach's own role/hours/timeWeeks estimate.", confidence: "medium" },
+    kompetenshojning: { score: kompetens, reasoning: "MOCK DATA. Skill-growth read based on who (or what) is actually doing the work in this approach.", confidence: "medium" },
+    nyttoInnovationshojning: { score: nytto, reasoning: "MOCK DATA. Innovation read based on what this approach's time/cost constraints actually allow trying.", confidence: "low" },
+    riskreducering: { score: risk, reasoning: `MOCK DATA. ${riskReasoning}`, confidence: "medium" }
+  };
+}
+
+function buildMockApproaches(caseText) {
+  return {
+    approaches: [
+      {
+        id: "ai-only",
+        label: APPROACH_LABELS["ai-only"],
+        narrative: `MOCK DATA. Example of how an AI-only build might approach this case (${caseText.length} chars submitted): AI coding agents draft the whole system, one lead does a final sign-off before release.`,
+        roles: [
+          { roleLabel: "Engineering lead (sign-off only, mock)", seniority: "lead", count: 1, hoursEstimate: 12 },
+          { roleLabel: "AI build capacity (mock)", seniority: "ai", count: 1, hoursEstimate: 80 }
+        ],
+        timeWeeks: 2,
+        requiredInputs: ["MOCK DATA. Clear, testable acceptance criteria", "MOCK DATA. Access to a staging environment"],
+        riskNotes: "MOCK DATA. Without a dedicated human reviewer beyond final sign-off, subtle logic errors could ship unnoticed.",
+        moduleSplit: [],
+        categories: mockCategories({
+          effekt: 5,
+          kompetens: 2,
+          nytto: 3,
+          risk: 2,
+          riskReasoning: "Resources check: only a final sign-off role, no dedicated reviewer for AI-generated logic, so risk coverage is thin."
+        })
+      },
+      {
+        id: "mixed",
+        label: APPROACH_LABELS.mixed,
+        narrative: "MOCK DATA. Example of a split approach: AI builds the well-patterned parts, a named specialist builds the critical/ambiguous parts, each AI-built module has a named reviewer.",
+        roles: [
+          { roleLabel: "Full-stack developer + AI pairing (mock)", seniority: "mid", count: 1, hoursEstimate: 90 },
+          { roleLabel: "Specialist reviewer (mock)", seniority: "specialist", count: 1, hoursEstimate: 40 },
+          { roleLabel: "AI build capacity (mock)", seniority: "ai", count: 1, hoursEstimate: 60 }
+        ],
+        timeWeeks: 4,
+        requiredInputs: ["MOCK DATA. A module-by-module suitability read", "MOCK DATA. A named reviewer per AI-built module"],
+        riskNotes: "MOCK DATA. Risk is scoped to whichever modules AI actually touches, assuming the split is honored in practice.",
+        moduleSplit: [
+          { module: "MOCK: input form", builder: "ai", reviewer: "Full-stack developer (mock)", rationale: "MOCK DATA. High pattern, low criticality." },
+          { module: "MOCK: core business logic", builder: "human", reviewer: "Specialist reviewer (mock)", rationale: "MOCK DATA. Low pattern, high criticality." }
+        ],
+        categories: mockCategories({
+          effekt: 4,
+          kompetens: 4,
+          nytto: 4,
+          risk: 4,
+          riskReasoning: "Resources check: named human reviewer on every AI-built module, and the critical module is human-built outright, so coverage matches criticality."
+        })
+      },
+      {
+        id: "dev-team",
+        label: APPROACH_LABELS["dev-team"],
+        narrative: "MOCK DATA. Example of a traditional, fully human-built approach: a small developer team builds and reviews every part manually, no AI coding assistance.",
+        roles: [
+          { roleLabel: "Senior developer (mock)", seniority: "senior", count: 1, hoursEstimate: 220 },
+          { roleLabel: "Mid-level developer (mock)", seniority: "mid", count: 1, hoursEstimate: 180 }
+        ],
+        timeWeeks: 8,
+        requiredInputs: ["MOCK DATA. Dedicated developer time blocked off", "MOCK DATA. Domain expert available for questions"],
+        riskNotes: "MOCK DATA. Slower and more expensive, but lower risk of unverified AI-generated logic.",
+        moduleSplit: [],
+        categories: mockCategories({
+          effekt: 2,
+          kompetens: 3,
+          nytto: 2,
+          risk: 5,
+          riskReasoning: "Resources check: every line is written and reviewed by a named senior/mid developer, highest resource coverage of the three."
+        })
+      }
+    ]
+  };
+}
+
 // Fake response so the full UI/flow can be tested without spending any
 // hackathon API credits. Used automatically whenever no real key is set.
+// Only covers what's genuinely case-level now (missingInfo/costEstimate/summary),
+// the four value categories are scored per build-approach instead, see buildMockApproaches.
 function buildMockResult(caseText) {
   return {
-    categories: {
-      effektokning: {
-        score: 3,
-        reasoning: "MOCK DATA. This is a placeholder response, no model was called. Add a real OPENROUTER_API_KEY to .env to get real scoring.",
-        confidence: "low",
-        citations: [
-          { title: "(mock) Example: McKinsey report on AI efficiency gains in insurance", url: "https://example.com/mock-source-1" },
-          { title: "(mock) Example: industry survey on AI customer service deflection rates", url: "https://example.com/mock-source-1b" }
-        ]
-      },
-      kompetenshojning: {
-        score: 4,
-        reasoning: "MOCK DATA. Placeholder reasoning for the skill/competence category, replace by running with a real key. This one legitimately has no citation in this mock, showing what an honest empty result looks like.",
-        confidence: "medium",
-        citations: []
-      },
-      nyttoInnovationshojning: {
-        score: 2,
-        reasoning: "MOCK DATA. Placeholder reasoning for the benefit/innovation category.",
-        confidence: "low",
-        citations: [
-          { title: "(mock) Example: Gartner note on maturity of this AI use case pattern", url: "https://example.com/mock-source-3" }
-        ]
-      },
-      riskreducering: {
-        score: 3,
-        reasoning: "MOCK DATA. Placeholder reasoning for the risk reduction category.",
-        confidence: "medium",
-        citations: [
-          { title: "(mock) Example: Gartner fraud-detection benchmark", url: "https://example.com/mock-source-2" }
-        ]
-      }
-    },
     missingInfo: [
       "This is mock output, no case was actually analyzed",
       `You submitted ${caseText.length} characters of case text`
@@ -287,44 +336,6 @@ function buildMockResult(caseText) {
       reasoning: "MOCK DATA. Placeholder cost estimate, replace by running with a real key."
     },
     summary: "MOCK MODE: no OpenRouter key is set, so this is fake data to test the UI. Set OPENROUTER_API_KEY in .env for a real assessment."
-  };
-}
-
-function buildMockChallengeQuestion() {
-  return {
-    question: "MOCK DATA. Example challenge: you're claiming a skill increase here, but who on the team actually has this expertise today, and what happens if they leave halfway through?"
-  };
-}
-
-function buildMockChallengeResponse(defenseText) {
-  const addedSomething = defenseText.length > 60;
-  return addedSomething
-    ? {
-        scoreChanged: true,
-        newScore: 4,
-        reasoning: "MOCK DATA. Your reply looked detailed enough to count as new information in this fake evaluation, a real model would judge this for real.",
-        verdictNote: "Score adjusted (mock)."
-      }
-    : {
-        scoreChanged: false,
-        newScore: 3,
-        reasoning: "MOCK DATA. Your reply was short, so this mock logic treated it as not adding new concrete information.",
-        verdictNote: "Score unchanged (mock)."
-      };
-}
-
-function buildMockGapFill(missingItem, mode) {
-  return {
-    assumption:
-      mode === "assume"
-        ? `MOCK DATA. Example assumption for "${missingItem}": assuming a moderate, realistic answer consistent with the rest of the case.`
-        : null,
-    changedCategories: {
-      effektokning: {
-        score: 4,
-        reasoning: `MOCK DATA. Example of how filling in "${missingItem}" might shift this category's score and reasoning, a real model would judge this for real.`
-      }
-    }
   };
 }
 
@@ -341,109 +352,65 @@ app.post("/api/evaluate", async (req, res) => {
   if (!hasRealKey()) {
     // No key set (or forced via .env) — return mock data instead of erroring,
     // so the UI/flow is fully testable before hackathon day.
-    const mockResult = buildMockResult(caseText);
-    mockResult.priorityScore = computePriorityScore(mockResult.categories, mockResult.costEstimate.tier);
-    return res.json({ result: mockResult, categories: CATEGORIES, postures: POSTURES, mode: "mock" });
+    return res.json({ result: buildMockResult(caseText), mode: "mock" });
   }
 
   try {
-    // Main call: scores, reasoning, confidence, missing info, cost. No web search here,
-    // citations are found separately below, one dedicated search per category.
+    // Case-level pass only: missingInfo, overall costEstimate, summary. The four
+    // value categories are no longer scored here, see /api/build-approaches —
+    // they're scored once per build approach (ai-only/mixed/dev-team) instead,
+    // since the score genuinely depends on which resources are doing the work.
     const parsed = await callModel({
       systemPrompt: buildSystemPrompt(),
       userMessage: caseText,
       temperature: 0.2
     });
 
-    Object.values(parsed.categories).forEach((cat) => {
-      cat.citations = [];
-    });
-
-    if (WEB_SEARCH_ENABLED) {
-      await findCitationsPerCategory(parsed.categories);
-    }
-
-    parsed.priorityScore = computePriorityScore(parsed.categories, parsed.costEstimate?.tier ?? 3);
-
-    res.json({ result: parsed, categories: CATEGORIES, postures: POSTURES, mode: "live" });
+    res.json({ result: parsed, mode: "live" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error calling the model", detail: String(err) });
   }
 });
 
-// Gap-fill: show what the assessment would look like if a flagged missing piece
-// of information were answered, either with the user's real answer or the model's
-// own best-guess assumption (clearly labeled as speculative either way).
-app.post("/api/fill-gap", async (req, res) => {
-  const { caseText, missingItem, mode, answerText } = req.body || {};
-  if (!caseText || !missingItem || !mode) {
-    return res.status(400).json({ error: "caseText, missingItem and mode are required" });
-  }
-  if (mode === "user" && !answerText) {
-    return res.status(400).json({ error: "answerText is required when mode is 'user'" });
+// Build-approach comparison: for the same case, what would it actually take to
+// build it AI-only, dev-team-only, or mixed (split by module)? The model estimates
+// roles/hours/weeks/required-inputs/risk per approach, cost in SEK is computed
+// server-side from ROLE_RATES_SEK_PER_HOUR so it's consistent across runs.
+app.post("/api/build-approaches", async (req, res) => {
+  const caseText = (req.body?.caseText || "").trim();
+  if (!caseText) {
+    return res.status(400).json({ error: "caseText is required" });
   }
 
   if (!hasRealKey()) {
-    return res.json({ ...buildMockGapFill(missingItem, mode), mode: "mock" });
+    const mock = buildMockApproaches(caseText);
+    mock.approaches.forEach((a) => {
+      Object.assign(a, computeApproachCost(a));
+      a.priorityScore = computePriorityScore(a.categories, a.costTier);
+    });
+    return res.json({
+      approaches: sortApproaches(mock.approaches),
+      categories: CATEGORIES,
+      rateCard: ROLE_RATES_SEK_PER_HOUR,
+      mode: "mock"
+    });
   }
-
-  const userMessage =
-    mode === "user"
-      ? `Case description:\n${caseText}\n\nMissing item that was flagged: ${missingItem}\nThe user supplied this real answer: ${answerText}`
-      : `Case description:\n${caseText}\n\nMissing item that was flagged: ${missingItem}\nInvent a plausible assumption for this yourself, then reassess.`;
 
   try {
     const parsed = await callModel({
-      systemPrompt: buildGapFillPrompt(),
-      userMessage,
-      temperature: mode === "assume" ? 0.4 : 0.2
+      systemPrompt: buildApproachesPrompt(),
+      userMessage: caseText,
+      temperature: 0.3
     });
-    res.json({ ...parsed, mode: "live" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error calling the model", detail: String(err) });
-  }
-});
 
-// Step 1 of the debate flow: ask for a skeptical challenge question on one category.
-app.post("/api/challenge", async (req, res) => {
-  const { caseText, categoryId, categoryScore, categoryReasoning } = req.body || {};
-  if (!caseText || !categoryId) {
-    return res.status(400).json({ error: "caseText and categoryId are required" });
-  }
+    const approaches = (parsed.approaches || []).map((a) => {
+      const withCost = { ...a, label: APPROACH_LABELS[a.id] || a.id, ...computeApproachCost(a) };
+      withCost.priorityScore = computePriorityScore(withCost.categories || {}, withCost.costTier);
+      return withCost;
+    });
 
-  if (!hasRealKey()) {
-    return res.json({ ...buildMockChallengeQuestion(), mode: "mock" });
-  }
-
-  const userMessage = `Case description:\n${caseText}\n\nCategory being challenged: ${categoryId}\nCurrent score: ${categoryScore}/5\nCurrent reasoning: ${categoryReasoning}`;
-
-  try {
-    const parsed = await callModel({ systemPrompt: buildChallengeQuestionPrompt(), userMessage, temperature: 0.4 });
-    res.json({ ...parsed, mode: "live" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error calling the model", detail: String(err) });
-  }
-});
-
-// Step 2 of the debate flow: evaluate the user's defense against the challenge.
-app.post("/api/challenge/respond", async (req, res) => {
-  const { caseText, categoryId, categoryScore, categoryReasoning, question, defense } = req.body || {};
-  if (!caseText || !categoryId || !defense) {
-    return res.status(400).json({ error: "caseText, categoryId and defense are required" });
-  }
-
-  if (!hasRealKey()) {
-    return res.json({ ...buildMockChallengeResponse(defense), mode: "mock" });
-  }
-
-  const userMessage = `Case description:\n${caseText}\n\nCategory: ${categoryId}\nOriginal score: ${categoryScore}/5\nOriginal reasoning: ${categoryReasoning}\nYour challenge question: ${question}\nUser's defense: ${defense}`;
-
-  try {
-    const parsed = await callModel({ systemPrompt: buildChallengeResponsePrompt(), userMessage, temperature: 0.2 });
-    res.json({ ...parsed, mode: "live" });
+    res.json({ approaches: sortApproaches(approaches), categories: CATEGORIES, rateCard: ROLE_RATES_SEK_PER_HOUR, mode: "live" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error calling the model", detail: String(err) });

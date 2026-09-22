@@ -119,20 +119,17 @@
 
   .results { margin-top: 0.5rem; display: none; }
 
-  /* Two-column report layout: sticky scorecard beside the numbered assessment list,
-     replacing the old single-column stack of identical cards. */
-  .report-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.75rem; align-items: start; }
-  @media (max-width: 780px) { .report-layout { grid-template-columns: 1fr; } }
-  .report-side { position: sticky; top: 1.5rem; }
-  .report-main { min-width: 0; }
-
-  .overall {
+  /* Case-level summary strip: missing-info + cost + plain-language summary.
+     Everything category-specific (value scores, risk read) now lives inside
+     each build-approach card instead, see .approaches-grid below. */
+  .case-summary {
     background: var(--maroon);
     color: #fbf3ea;
     border-radius: 4px;
-    padding: 1.4rem 1.3rem;
+    padding: 1.3rem 1.3rem 1.4rem;
+    margin-bottom: 1.5rem;
   }
-  .overall h2 {
+  .case-summary h2 {
     margin: 0 0 0.5rem;
     font-family: var(--sans);
     font-size: 0.75rem;
@@ -141,49 +138,18 @@
     letter-spacing: 0.1em;
     color: #e8c9c9;
   }
-  .overall .score { font-family: var(--serif); font-size: 2.6rem; font-weight: 700; line-height: 1; color: #fffefb; }
-  .overall p { color: #f0ddd2; font-size: 0.88rem; margin: 0.6rem 0 0; }
-  .overall .priority-note { color: #d9a8a8; font-size: 0.78rem; }
+  .case-summary p#summary { color: #f0ddd2; font-size: 0.95rem; margin: 0 0 0.9rem; line-height: 1.45; }
+  .cost-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: baseline; padding-top: 0.9rem; border-top: 1px solid rgba(251, 243, 234, 0.25); }
+  .cost-row span:first-child { color: #d9a8a8; font-size: 0.8rem; }
+  .cost-tier { font-family: var(--serif); font-weight: 700; color: #fffefb; }
+  .cost-reason { color: #e8c9c9; font-size: 0.8rem; }
 
-  .grid { display: block; counter-reset: catindex; }
-
-  .cat-card {
-    position: relative;
-    background: var(--paper);
-    border: 1px solid var(--rule);
-    border-left: 3px solid var(--maroon);
-    border-radius: 3px;
-    padding: 0.95rem 1.1rem 0.95rem 3.1rem;
-    margin-bottom: 0.7rem;
-  }
-  .cat-card::before {
-    counter-increment: catindex;
-    content: counter(catindex, decimal-leading-zero);
-    position: absolute;
-    left: 1.0rem;
-    top: 0.95rem;
-    font-family: var(--serif);
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--ink-soft);
-  }
-  .cat-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .cat-name { font-family: var(--serif); font-weight: 600; font-size: 1.02rem; color: var(--ink); }
-  .cat-score { font-family: var(--serif); font-weight: 700; font-size: 1.1rem; color: var(--maroon); }
-  .bar { height: 4px; background: var(--rule); border-radius: 2px; margin: 0.5rem 0 0.6rem; overflow: hidden; }
-  .bar-fill { height: 100%; background: var(--maroon); }
-  .cat-reason { font-size: 0.9rem; color: var(--ink); margin: 0; line-height: 1.45; }
-  .citations { margin: 0.55rem 0 0; padding: 0; list-style: none; }
-  .citations li { font-size: 0.78rem; margin-top: 0.25rem; }
-  .citations a { color: var(--maroon); text-decoration: none; border-bottom: 1px dotted var(--maroon); }
-  .citations a:hover { border-bottom-style: solid; }
   .badge {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
     font-size: 0.72rem;
     font-weight: 600;
-    margin-top: 0.5rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     background: none;
@@ -213,91 +179,80 @@
   }
   .missing ul { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; color: var(--ink); }
   .missing p.none { color: var(--ink-soft); font-size: 0.9rem; margin: 0; font-style: italic; }
-  .missing li { margin-bottom: 0.7rem; }
-  .gap-actions { margin-top: 0.35rem; }
-  .gap-actions button {
-    margin: 0.3rem 0.9rem 0 0;
-    padding: 0;
-    font-size: 0.78rem;
-    font-weight: 600;
-    text-transform: none;
-    letter-spacing: 0;
-    background: none;
-    color: var(--maroon);
-    border-bottom: 1px solid var(--maroon);
-    border-radius: 0;
-  }
-  .gap-actions button:hover:not(:disabled) { background: none; color: var(--maroon-dark); }
-  .gap-answer-box { margin-top: 0.5rem; display: none; }
-  .gap-answer-box textarea { min-height: 50px; font-size: 0.85rem; }
-  .gap-result {
-    margin-top: 0.5rem;
-    padding: 0.6rem 0.7rem;
-    border-radius: 3px;
-    border-left: 3px solid var(--mid);
-    background: var(--paper-alt);
-    font-size: 0.84rem;
-    display: none;
-  }
-  .gap-result .assumption { font-style: italic; color: var(--ink-soft); margin-bottom: 0.3rem; }
-  .gap-result .change { margin-top: 0.2rem; }
+  .missing li { margin-bottom: 0.4rem; }
 
-  .cost-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: baseline; margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(251, 243, 234, 0.25); }
-  .cost-row span:first-child { color: #d9a8a8; font-size: 0.8rem; }
-  .cost-tier { font-family: var(--serif); font-weight: 700; color: #fffefb; }
-  .cost-reason { color: #e8c9c9; font-size: 0.8rem; }
-  .priority-note { color: #d9a8a8; font-size: 0.78rem; margin-top: 0.35rem; }
+  /* Build-approach comparison: three columns (AI-only / dev-team / mixed) laid out
+     as a scorecard-style table so cost, time, roles and risk read side by side. */
+  .approaches-panel { margin-top: 1.9rem; padding-top: 1.6rem; border-top: 2px solid var(--maroon); }
+  .approaches-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1.2rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .approaches-head h3 { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin: 0 0 0.3rem; color: var(--ink); }
+  .approaches-sub { color: var(--ink-soft); font-size: 0.85rem; margin: 0; max-width: 560px; }
+  .approaches-status { color: var(--ink-soft); font-size: 0.85rem; margin-bottom: 0.8rem; }
+  .approaches-status.error { color: var(--low); }
+  #approachesBtn { white-space: nowrap; }
+  .approaches-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  @media (max-width: 900px) { .approaches-grid { grid-template-columns: 1fr; } }
 
-  .posture-row { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid rgba(251, 243, 234, 0.25); }
-  .posture-label { display: block; color: #d9a8a8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem; }
-  #postureSelect {
-    width: 100%;
-    background: #6f1f29;
-    color: #fffefb;
-    border: 1px solid rgba(251, 243, 234, 0.35);
-    border-radius: 3px;
-    padding: 0.4rem 0.5rem;
-    font-family: var(--sans);
-    font-size: 0.88rem;
-    cursor: pointer;
-  }
-  .posture-desc { color: #e8c9c9; font-size: 0.78rem; margin: 0.5rem 0 0; font-style: italic; }
+  .approach-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 1rem 1.1rem; display: flex; flex-direction: column; }
+  .approach-card.approach-mixed { border-top: 3px solid var(--maroon); }
+  .approach-card.approach-ai-only { border-top: 3px solid var(--mid); }
+  .approach-card.approach-dev-team { border-top: 3px solid var(--ink-soft); }
+  .approach-title { font-family: var(--serif); font-weight: 700; font-size: 1.02rem; color: var(--ink); margin: 0 0 0.5rem; }
+  .approach-cost { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.15rem; }
+  .approach-cost .amount { font-family: var(--serif); font-weight: 700; font-size: 1.35rem; color: var(--maroon); }
+  .approach-cost .tier { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
+  .approach-time { font-size: 0.82rem; color: var(--ink-soft); margin-bottom: 0.7rem; }
+  .approach-time strong { color: var(--ink); }
+  .approach-narrative { font-size: 0.86rem; color: var(--ink); line-height: 1.42; margin: 0 0 0.7rem; }
 
-  .debate {
-    background: var(--paper);
-    border: 1px solid var(--rule);
-    border-radius: 3px;
-    padding: 1.1rem 1.2rem;
-    margin-top: 1.1rem;
-    display: none;
-  }
-  .debate h3 {
-    margin: 0 0 0.6rem;
+  .approach-section-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0.6rem 0 0.35rem; }
+  .role-list { list-style: none; margin: 0 0 0.2rem; padding: 0; }
+  .role-list li { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.82rem; padding: 0.28rem 0; border-bottom: 1px dashed var(--rule); }
+  .role-list li:last-child { border-bottom: none; }
+  .role-name { color: var(--ink); }
+  .role-name .seniority { color: var(--ink-soft); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em; margin-left: 0.3rem; }
+  .role-hours { color: var(--ink-soft); white-space: nowrap; font-size: 0.78rem; }
+
+  .req-list { margin: 0 0 0.2rem; padding-left: 1.05rem; font-size: 0.82rem; color: var(--ink); }
+  .req-list li { margin-bottom: 0.25rem; }
+
+  .approach-risk { font-size: 0.82rem; color: var(--ink); background: var(--paper-alt); border-left: 3px solid var(--low); padding: 0.5rem 0.65rem; border-radius: 3px; margin-top: 0.5rem; }
+
+  .module-split { list-style: none; margin: 0; padding: 0; }
+  .module-split li { font-size: 0.8rem; padding: 0.35rem 0; border-bottom: 1px dashed var(--rule); }
+  .module-split li:last-child { border-bottom: none; }
+  .module-split .module-name { font-weight: 600; color: var(--ink); }
+  .module-split .module-builder { text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.05em; padding: 0.05rem 0.35rem; border-radius: 2px; margin-left: 0.4rem; }
+  .module-split .module-builder.ai { background: #f2e2c4; color: #7a5b16; }
+  .module-split .module-builder.human { background: #e2e8de; color: #3f6b46; }
+  .module-split .module-meta { color: var(--ink-soft); display: block; margin-top: 0.15rem; }
+
+  /* Per-approach category ratings: the same four value categories, scored once
+     PER build approach instead of once per case, since the score depends on
+     which resources are actually doing the work under that approach. */
+  .approach-priority { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.65rem; padding-bottom: 0.65rem; border-bottom: 1px solid var(--rule); }
+  .approach-priority .value { font-family: var(--serif); font-weight: 700; font-size: 1.5rem; color: var(--maroon); }
+  .approach-priority .value-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
+  .cat-rating-list { list-style: none; margin: 0 0 0.2rem; padding: 0; counter-reset: catindex; }
+  .cat-rating { position: relative; padding: 0.5rem 0 0.5rem 1.5rem; border-bottom: 1px dashed var(--rule); }
+  .cat-rating:last-child { border-bottom: none; }
+  .cat-rating::before {
+    counter-increment: catindex;
+    content: counter(catindex, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 0.55rem;
     font-family: var(--serif);
-    font-size: 1.02rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    color: var(--ink);
+    color: var(--ink-soft);
   }
-  .debate .target { color: var(--ink-soft); font-size: 0.82rem; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; }
-  .debate .question {
-    font-family: var(--serif);
-    font-style: italic;
-    font-size: 0.98rem;
-    margin-bottom: 0.75rem;
-    padding-left: 0.9rem;
-    border-left: 3px solid var(--maroon);
-    color: var(--ink);
-  }
-  .debate textarea { min-height: 80px; }
-  .debate .outcome {
-    margin-top: 0.85rem;
-    padding: 0.65rem 0.8rem;
-    border-radius: 3px;
-    font-size: 0.88rem;
-    display: none;
-  }
-  .debate .outcome.changed { background: #e7efe4; border-left: 3px solid var(--good); }
-  .debate .outcome.unchanged { background: var(--paper-alt); border-left: 3px solid var(--rule); }
+  .cat-rating-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .cat-rating-name { font-family: var(--serif); font-weight: 600; font-size: 0.86rem; color: var(--ink); }
+  .cat-rating-score { font-family: var(--serif); font-weight: 700; font-size: 0.92rem; color: var(--maroon); }
+  .cat-rating-bar { height: 3px; background: var(--rule); border-radius: 2px; margin: 0.35rem 0 0.4rem; overflow: hidden; }
+  .cat-rating-bar-fill { height: 100%; background: var(--maroon); }
+  .cat-rating-reason { font-size: 0.78rem; color: var(--ink); margin: 0 0 0.3rem; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -320,44 +275,31 @@
   </div>
 
   <div class="results" id="results">
-    <div class="report-layout">
-      <div class="report-side">
-        <div class="overall">
-          <h2>Priority score</h2>
-          <div class="score" id="overallScore">-</div>
-          <p class="priority-note" id="priorityNote"></p>
-          <p id="summary"></p>
-          <div class="cost-row">
-            <span>Estimated cost:</span>
-            <span class="cost-tier" id="costTier">-</span>
-            <span class="cost-reason" id="costReason"></span>
-          </div>
-          <div class="posture-row">
-            <label class="posture-label" for="postureSelect">Viewed through:</label>
-            <select id="postureSelect"></select>
-            <p class="posture-desc" id="postureDesc"></p>
-          </div>
-        </div>
+    <div class="case-summary">
+      <h2>Case summary</h2>
+      <p id="summary"></p>
+      <div class="cost-row">
+        <span>Estimated overall cost burden:</span>
+        <span class="cost-tier" id="costTier">-</span>
+        <span class="cost-reason" id="costReason"></span>
       </div>
+    </div>
 
-      <div class="report-main">
-        <div class="grid" id="categoryGrid"></div>
+    <div class="missing">
+      <h3>What's missing from this case</h3>
+      <div id="missingInfo"></div>
+    </div>
 
-        <div class="missing">
-          <h3>What's missing from this case</h3>
-          <div id="missingInfo"></div>
+    <div class="approaches-panel" id="approachesPanel">
+      <div class="approaches-head">
+        <div>
+          <h3>How would this actually get built?</h3>
+          <p class="approaches-sub">Same case, three build approaches — team, time, cost, and the same four value categories (effektökning, kompetenshöjning, nytto-/innovationshöjning, riskreducering) rated separately for each, since the score depends on which resources are actually doing the work.</p>
         </div>
-
-        <div class="debate" id="debateBox">
-          <h3>The committee pushes back</h3>
-          <div class="target" id="debateTarget"></div>
-          <div class="question" id="debateQuestion"></div>
-          <textarea id="debateDefense" placeholder="Your response..."></textarea>
-          <br />
-          <button id="debateSubmit">Respond</button>
-          <div class="outcome" id="debateOutcome"></div>
-        </div>
+        <button type="button" id="approachesBtn">Compare build approaches</button>
       </div>
+      <div id="approachesStatus" class="approaches-status"></div>
+      <div class="approaches-grid" id="approachesGrid"></div>
     </div>
   </div>
 </div>
@@ -367,76 +309,18 @@
   const input = document.getElementById("caseInput");
   const statusEl = document.getElementById("status");
   const results = document.getElementById("results");
-  const overallScore = document.getElementById("overallScore");
   const summary = document.getElementById("summary");
-  const categoryGrid = document.getElementById("categoryGrid");
   const missingInfo = document.getElementById("missingInfo");
   const mockBanner = document.getElementById("mockBanner");
   const costTierEl = document.getElementById("costTier");
   const costReasonEl = document.getElementById("costReason");
-  const priorityNote = document.getElementById("priorityNote");
-  const debateBox = document.getElementById("debateBox");
-  const debateTarget = document.getElementById("debateTarget");
-  const debateQuestion = document.getElementById("debateQuestion");
-  const debateDefense = document.getElementById("debateDefense");
-  const debateSubmit = document.getElementById("debateSubmit");
-  const debateOutcome = document.getElementById("debateOutcome");
-  const postureSelect = document.getElementById("postureSelect");
-  const postureDesc = document.getElementById("postureDesc");
+  const approachesBtn = document.getElementById("approachesBtn");
+  const approachesStatus = document.getElementById("approachesStatus");
+  const approachesGrid = document.getElementById("approachesGrid");
 
-  // Posture lens: reweights the same category scores + cost tier for how much a given
-  // company stance cares about each category. Numbers only, mirrors the server's
-  // computeWeightedPriorityScore/POSTURES so switching postures is instant, no round trip,
-  // and never touches the underlying reasoning text.
-  function computeWeightedPriorityScore(categories, costTier, posture) {
-    let weightedSum = 0;
-    let weightTotal = 0;
-    Object.entries(categories).forEach(([id, cat]) => {
-      const w = posture.weights[id] ?? 1;
-      weightedSum += cat.score * w;
-      weightTotal += w;
-    });
-    const avg = weightTotal > 0 ? weightedSum / weightTotal : 0;
-    const multiplier = posture.costMultipliers[costTier] ?? 1.0;
-    const priority = avg * multiplier;
-    return Math.round(Math.min(5, Math.max(0.5, priority)) * 10) / 10;
-  }
-
-  // State kept around for the debate flow.
+  // State kept around after an evaluate call, used when the approach comparison
+  // is triggered separately.
   let currentCaseText = "";
-  let currentResult = null;
-  let currentCategoriesMeta = [];
-  let currentPostures = [];
-  let currentPostureId = "balanced";
-  let debateTargetId = null;
-
-  function populatePostures(postures) {
-    currentPostures = postures || [];
-    postureSelect.innerHTML = "";
-    currentPostures.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.label;
-      postureSelect.appendChild(opt);
-    });
-    currentPostureId = currentPostures[0]?.id || "balanced";
-    postureSelect.value = currentPostureId;
-  }
-
-  function refreshPriorityScore() {
-    if (!currentResult) return;
-    const posture = currentPostures.find((p) => p.id === currentPostureId) || currentPostures[0];
-    if (!posture) return;
-    const score = computeWeightedPriorityScore(currentResult.categories, currentResult.costEstimate?.tier ?? 3, posture);
-    currentResult.priorityScore = score;
-    overallScore.textContent = `${score} / 5`;
-    postureDesc.textContent = posture.description || "";
-  }
-
-  postureSelect.addEventListener("change", () => {
-    currentPostureId = postureSelect.value;
-    refreshPriorityScore();
-  });
 
   // Check mode on load so the banner shows up even before the first evaluate call.
   fetch("/api/health")
@@ -450,121 +334,20 @@
     return "low";
   }
 
-  function renderCategories(categoriesMeta, scores) {
-    categoryGrid.innerHTML = "";
-    categoriesMeta.forEach((meta) => {
-      const data = scores[meta.id];
-      if (!data) return;
-      const card = document.createElement("div");
-      card.className = "cat-card";
-      card.dataset.categoryId = meta.id;
-      const citations = Array.isArray(data.citations) ? data.citations : [];
-      const citationsHtml = citations.length
-        ? `<ul class="citations">${citations
-            .map((c) => `<li><a href="${c.url}" target="_blank" rel="noopener">${c.title || c.url}</a></li>`)
-            .join("")}</ul>`
-        : "";
-      card.innerHTML = `
-        <div class="cat-head">
-          <span class="cat-name">${meta.swedish}</span>
-          <span class="cat-score" data-role="score">${data.score}/5</span>
-        </div>
-        <div class="bar"><div class="bar-fill" data-role="bar" style="width:${(data.score / 5) * 100}%"></div></div>
-        <p class="cat-reason" data-role="reason">${data.reasoning || ""}</p>
-        <span class="badge ${confidenceClass(data.confidence)}">${data.confidence || "unknown"} confidence</span>
-        ${citationsHtml}
-      `;
-      categoryGrid.appendChild(card);
-    });
-  }
-
   function renderMissing(list) {
     if (!list || list.length === 0) {
       missingInfo.innerHTML = '<p class="none">Nothing flagged, the case description looks reasonably complete.</p>';
       return;
     }
     const ul = document.createElement("ul");
-    list.forEach((item, i) => {
+    list.forEach((item) => {
       const li = document.createElement("li");
-      const gapId = `gap-${i}`;
-      li.innerHTML = `
-        ${item}
-        <div class="gap-actions">
-          <button type="button" data-gap-action="assume" data-gap-id="${gapId}">See AI's best guess</button>
-          <button type="button" data-gap-action="ask" data-gap-id="${gapId}">Answer it myself</button>
-        </div>
-        <div class="gap-answer-box" id="${gapId}-answer">
-          <textarea placeholder="Your answer..."></textarea>
-          <button type="button" data-gap-action="submit-answer" data-gap-id="${gapId}">Submit</button>
-        </div>
-        <div class="gap-result" id="${gapId}-result"></div>
-      `;
-      li.dataset.missingItem = item;
+      li.textContent = item;
       ul.appendChild(li);
     });
     missingInfo.innerHTML = "";
     missingInfo.appendChild(ul);
   }
-
-  async function runGapFill(li, missingItem, mode, answerText) {
-    const resultBox = li.querySelector(".gap-result");
-    resultBox.style.display = "block";
-    resultBox.innerHTML = "Thinking...";
-
-    try {
-      const res = await fetch("/api/fill-gap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseText: currentCaseText, missingItem, mode, answerText })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        resultBox.innerHTML = data.error || "Something went wrong.";
-        return;
-      }
-
-      const changed = data.changedCategories || {};
-      const changedIds = Object.keys(changed);
-      let html = "";
-      if (data.assumption) {
-        html += `<div class="assumption">Assumption: ${data.assumption}</div>`;
-      }
-      if (changedIds.length === 0) {
-        html += "No category's score would meaningfully change based on this.";
-      } else {
-        changedIds.forEach((id) => {
-          const meta = currentCategoriesMeta.find((m) => m.id === id);
-          const oldScore = currentResult?.categories?.[id]?.score;
-          const name = meta ? meta.swedish : id;
-          html += `<div class="change"><strong>${name}</strong>: ${oldScore != null ? oldScore + " → " : ""}${changed[id].score}/5. ${changed[id].reasoning}</div>`;
-        });
-      }
-      resultBox.innerHTML = html;
-    } catch (err) {
-      resultBox.innerHTML = "Request failed: " + err.message;
-    }
-  }
-
-  missingInfo.addEventListener("click", (e) => {
-    const btnEl = e.target.closest("button[data-gap-action]");
-    if (!btnEl) return;
-    const li = btnEl.closest("li");
-    const missingItem = li.dataset.missingItem;
-    const action = btnEl.dataset.gapAction;
-    const gapId = btnEl.dataset.gapId;
-
-    if (action === "assume") {
-      runGapFill(li, missingItem, "assume");
-    } else if (action === "ask") {
-      const box = document.getElementById(`${gapId}-answer`);
-      box.style.display = box.style.display === "block" ? "none" : "block";
-    } else if (action === "submit-answer") {
-      const box = document.getElementById(`${gapId}-answer`);
-      const answerText = box.querySelector("textarea").value.trim();
-      if (!answerText) return;
-      runGapFill(li, missingItem, "user", answerText);
-    }
-  });
 
   btn.addEventListener("click", async () => {
     const caseText = input.value.trim();
@@ -595,14 +378,8 @@
 
       const result = data.result;
       currentCaseText = caseText;
-      currentResult = result;
-      currentCategoriesMeta = data.categories;
-      populatePostures(data.postures);
 
-      refreshPriorityScore();
-      priorityNote.textContent = "Value score weighed against estimated cost, ranking indicator, not a verdict.";
       summary.textContent = result.summary || "";
-      renderCategories(data.categories, result.categories);
       renderMissing(result.missingInfo);
 
       if (result.costEstimate) {
@@ -610,7 +387,11 @@
         costReasonEl.textContent = result.costEstimate.reasoning || "";
       }
 
-      startDebate();
+      // Reset the build-approach comparison, it's per-case and shouldn't carry
+      // over stale data from a previous evaluation.
+      approachesGrid.innerHTML = "";
+      approachesStatus.className = "approaches-status";
+      approachesStatus.textContent = "";
 
       results.style.display = "block";
       statusEl.textContent = "";
@@ -622,105 +403,117 @@
     }
   });
 
-  function pickWeakestCategory(categories) {
-    const confidenceRank = { low: 0, medium: 1, high: 2 };
-    const entries = Object.entries(categories);
-    entries.sort((a, b) => {
-      const confDiff = (confidenceRank[a[1].confidence] ?? 1) - (confidenceRank[b[1].confidence] ?? 1);
-      if (confDiff !== 0) return confDiff;
-      return a[1].score - b[1].score;
+  // --- Build-approach comparison (AI-only / dev-team / mixed) ---
+  const SEK_FORMAT = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 });
+
+  function formatSEK(n) {
+    return SEK_FORMAT.format(n || 0) + " kr";
+  }
+
+  function renderCategoryRatings(categoriesMeta, categories) {
+    if (!categories) return "";
+    return `<ul class="cat-rating-list">${categoriesMeta
+      .map((meta) => {
+        const data = categories[meta.id];
+        if (!data) return "";
+        return `<li class="cat-rating">
+          <div class="cat-rating-head">
+            <span class="cat-rating-name">${meta.swedish}</span>
+            <span class="cat-rating-score">${data.score}/5</span>
+          </div>
+          <div class="cat-rating-bar"><div class="cat-rating-bar-fill" style="width:${(data.score / 5) * 100}%"></div></div>
+          <p class="cat-rating-reason">${data.reasoning || ""}</p>
+          <span class="badge ${confidenceClass(data.confidence)}">${data.confidence || "unknown"} confidence</span>
+        </li>`;
+      })
+      .join("")}</ul>`;
+  }
+
+  function renderApproaches(approaches, categoriesMeta) {
+    approachesGrid.innerHTML = "";
+    approaches.forEach((a) => {
+      const card = document.createElement("div");
+      card.className = `approach-card approach-${a.id}`;
+
+      const rolesHtml = (a.roles || [])
+        .map(
+          (r) => `<li>
+            <span class="role-name">${r.roleLabel || ""}<span class="seniority">${r.seniority || ""}</span></span>
+            <span class="role-hours">${r.count || 1} × ${r.hoursEstimate || 0}h</span>
+          </li>`
+        )
+        .join("");
+
+      const reqHtml = (a.requiredInputs || []).map((r) => `<li>${r}</li>`).join("");
+
+      const moduleHtml = (a.moduleSplit || [])
+        .map(
+          (m) => `<li>
+            <span class="module-name">${m.module || ""}</span>
+            <span class="module-builder ${m.builder === "ai" ? "ai" : "human"}">${m.builder === "ai" ? "AI" : "Human"}</span>
+            <span class="module-meta">Reviewer: ${m.reviewer || "—"}. ${m.rationale || ""}</span>
+          </li>`
+        )
+        .join("");
+
+      card.innerHTML = `
+        <h4 class="approach-title">${a.label || a.id}</h4>
+        <div class="approach-priority">
+          <span class="value">${a.priorityScore ?? "-"}/5</span>
+          <span class="value-label">Priority score</span>
+        </div>
+        <div class="approach-cost">
+          <span class="amount">${formatSEK(a.costSEK)}</span>
+          <span class="tier">${a.costLabel || ""} (tier ${a.costTier ?? "-"}/5)</span>
+        </div>
+        <div class="approach-time"><strong>${a.timeWeeks ?? "-"}</strong> weeks estimated</div>
+        <p class="approach-narrative">${a.narrative || ""}</p>
+        <div class="approach-section-label">Value &amp; risk (rated for this approach)</div>
+        ${renderCategoryRatings(categoriesMeta, a.categories)}
+        <div class="approach-section-label">Team / roles</div>
+        <ul class="role-list">${rolesHtml || "<li>No roles specified.</li>"}</ul>
+        <div class="approach-section-label">Needs before starting</div>
+        <ul class="req-list">${reqHtml || "<li>Nothing specific flagged.</li>"}</ul>
+        ${moduleHtml ? `<div class="approach-section-label">Module split</div><ul class="module-split">${moduleHtml}</ul>` : ""}
+        ${a.riskNotes ? `<div class="approach-risk">${a.riskNotes}</div>` : ""}
+      `;
+      approachesGrid.appendChild(card);
     });
-    return entries[0][0];
   }
 
-  async function startDebate() {
-    if (!currentResult) return;
-    debateTargetId = pickWeakestCategory(currentResult.categories);
-    const meta = currentCategoriesMeta.find((m) => m.id === debateTargetId);
-    const cat = currentResult.categories[debateTargetId];
-
-    debateOutcome.style.display = "none";
-    debateOutcome.className = "outcome";
-    debateDefense.value = "";
-    debateTarget.textContent = `Challenging: ${meta ? meta.swedish : debateTargetId} (currently ${cat.score}/5)`;
-    debateQuestion.textContent = "Loading challenge...";
-    debateBox.style.display = "block";
+  async function runApproachesComparison() {
+    if (!currentCaseText) return;
+    approachesBtn.disabled = true;
+    approachesStatus.textContent = "Estimating team, time, and cost for each approach...";
+    approachesGrid.innerHTML = "";
 
     try {
-      const res = await fetch("/api/challenge", {
+      const res = await fetch("/api/build-approaches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caseText: currentCaseText,
-          categoryId: debateTargetId,
-          categoryScore: cat.score,
-          categoryReasoning: cat.reasoning
-        })
+        body: JSON.stringify({ caseText: currentCaseText })
       });
       const data = await res.json();
       if (!res.ok) {
-        debateBox.style.display = "none";
+        approachesStatus.textContent = data.error || "Something went wrong.";
+        approachesStatus.className = "approaches-status error";
         return;
       }
-      debateQuestion.textContent = data.question || "";
+      approachesStatus.className = "approaches-status";
+      approachesStatus.textContent =
+        data.mode === "mock"
+          ? "Mock mode — set OPENROUTER_API_KEY in .env for a real estimate."
+          : "";
+      renderApproaches(data.approaches || [], data.categories || []);
     } catch (err) {
-      debateBox.style.display = "none";
-    }
-  }
-
-  debateSubmit.addEventListener("click", async () => {
-    const defense = debateDefense.value.trim();
-    if (!defense || !debateTargetId || !currentResult) return;
-
-    debateSubmit.disabled = true;
-    const cat = currentResult.categories[debateTargetId];
-
-    try {
-      const res = await fetch("/api/challenge/respond", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caseText: currentCaseText,
-          categoryId: debateTargetId,
-          categoryScore: cat.score,
-          categoryReasoning: cat.reasoning,
-          question: debateQuestion.textContent,
-          defense
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        debateOutcome.textContent = data.error || "Something went wrong.";
-        debateOutcome.className = "outcome unchanged";
-        debateOutcome.style.display = "block";
-        return;
-      }
-
-      debateOutcome.textContent = `${data.verdictNote || ""} ${data.reasoning || ""}`.trim();
-      debateOutcome.className = data.scoreChanged ? "outcome changed" : "outcome unchanged";
-      debateOutcome.style.display = "block";
-
-      if (data.scoreChanged) {
-        cat.score = data.newScore;
-        cat.reasoning = data.reasoning || cat.reasoning;
-
-        const card = categoryGrid.querySelector(`[data-category-id="${debateTargetId}"]`);
-        if (card) {
-          card.querySelector('[data-role="score"]').textContent = `${cat.score}/5`;
-          card.querySelector('[data-role="bar"]').style.width = `${(cat.score / 5) * 100}%`;
-          card.querySelector('[data-role="reason"]').textContent = cat.reasoning;
-        }
-
-        refreshPriorityScore();
-      }
-    } catch (err) {
-      debateOutcome.textContent = "Request failed: " + err.message;
-      debateOutcome.className = "outcome unchanged";
-      debateOutcome.style.display = "block";
+      approachesStatus.className = "approaches-status error";
+      approachesStatus.textContent = "Request failed: " + err.message;
     } finally {
-      debateSubmit.disabled = false;
+      approachesBtn.disabled = false;
     }
-  });
+  }
+
+  approachesBtn.addEventListener("click", runApproachesComparison);
 </script>
 </body>
 </html>
