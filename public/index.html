@@ -517,6 +517,9 @@
           card.querySelector('[data-role="reason"]').textContent = cat.reasoning;
         }
 
+        const meta = currentCategoriesMeta.find((m) => m.id === debateTargetId);
+        debateTarget.textContent = `Challenging: ${meta ? meta.swedish : debateTargetId} (currently ${cat.score}/5)`;
+
         const newPriority = computePriorityScore(currentResult.categories, currentResult.costEstimate?.tier ?? 3);
         currentResult.priorityScore = newPriority;
         overallScore.textContent = `${newPriority} / 5`;

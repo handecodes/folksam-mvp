@@ -8,7 +8,7 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
+const MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-lite";
 // Set WEB_SEARCH=false in .env to turn off live grounding (e.g. to save credits or speed things up).
 const WEB_SEARCH_ENABLED = process.env.WEB_SEARCH !== "false";
 
@@ -23,6 +23,47 @@ const CATEGORIES = [
   { id: "nyttoInnovationshojning", swedish: "Nytto-/innovationshöjning", english: "Benefit / innovation increase" },
   { id: "riskreducering", swedish: "Riskreducering", english: "Risk reduction" }
 ];
+
+// The model is asked to use exact canonical category ids, but sometimes drifts
+// (different casing, underscores/hyphens/slashes, diacritics stripped or kept, or an
+// outright spelling variant like "nyttainnovationshojning"). This maps any recognizable
+// variant back to the canonical id so score lookups and the UI never break on a raw,
+// unmapped identifier. Genuinely unrecognized ids are dropped, not passed through.
+const CATEGORY_ID_ALIASES = new Map();
+
+export function categoryIdLookupKey(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+for (const category of CATEGORIES) {
+  CATEGORY_ID_ALIASES.set(categoryIdLookupKey(category.id), category.id);
+  CATEGORY_ID_ALIASES.set(categoryIdLookupKey(category.swedish), category.id);
+  CATEGORY_ID_ALIASES.set(categoryIdLookupKey(category.english), category.id);
+}
+
+// Observed model variation: "nyttainnovationshojning" (spelling variant, not just
+// punctuation/casing, so it needs its own explicit alias).
+CATEGORY_ID_ALIASES.set(categoryIdLookupKey("nyttainnovationshojning"), "nyttoInnovationshojning");
+
+export function canonicalCategoryId(value) {
+  return CATEGORY_ID_ALIASES.get(categoryIdLookupKey(value)) ?? null;
+}
+
+// Normalizes a model-returned, category-id-keyed object (main `categories`, gap-fill
+// `changedCategories`, etc.) to canonical ids. Unrecognized ids are dropped rather than
+// passed through, so garbage/hallucinated keys never reach the client.
+export function normalizeCategoryRecord(record) {
+  const normalized = {};
+  for (const [rawId, value] of Object.entries(record || {})) {
+    const canonicalId = canonicalCategoryId(rawId);
+    if (canonicalId) normalized[canonicalId] = value;
+  }
+  return normalized;
+}
 
 function buildSystemPrompt() {
   return `You are an assistant that helps an investment committee at Folksam (a Swedish insurance company) reason through AI investment cases. You do NOT decide whether a case is good or bad. You produce a structured, honest, questionable draft assessment that a human committee will discuss, challenge, and refine.
@@ -64,7 +105,7 @@ Return ONLY valid JSON matching this shape, no markdown fences, no extra text:
 // average value score, adjusted by a cost multiplier. Higher cost tier pulls the score down.
 const COST_MULTIPLIERS = { 1: 1.3, 2: 1.15, 3: 1.0, 4: 0.85, 5: 0.7 };
 
-function computePriorityScore(categories, costTier) {
+export function computePriorityScore(categories, costTier) {
   const scores = Object.values(categories).map((c) => c.score);
   const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
   const multiplier = COST_MULTIPLIERS[costTier] ?? 1.0;
@@ -300,6 +341,8 @@ app.post("/api/evaluate", async (req, res) => {
       temperature: 0.2
     });
 
+    parsed.categories = normalizeCategoryRecord(parsed.categories);
+
     Object.values(parsed.categories).forEach((cat) => {
       cat.citations = [];
     });
@@ -344,6 +387,7 @@ app.post("/api/fill-gap", async (req, res) => {
       userMessage,
       temperature: mode === "assume" ? 0.4 : 0.2
     });
+    parsed.changedCategories = normalizeCategoryRecord(parsed.changedCategories);
     res.json({ ...parsed, mode: "live" });
   } catch (err) {
     console.error(err);
@@ -395,6 +439,12 @@ app.post("/api/challenge/respond", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Folksam AI Investment Analysis MVP running on http://localhost:${PORT}`);
-});
+// Only bind a port when run directly (node server.js), not when imported by tests.
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isMainModule) {
+  app.listen(PORT, () => {
+    console.log(`Folksam AI Investment Analysis MVP running on http://localhost:${PORT}`);
+  });
+}
+
+export { CATEGORIES };
