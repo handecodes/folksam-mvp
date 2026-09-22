@@ -21,6 +21,7 @@
     --good: #3f6b46;
     --mid: #97671f;
     --low: #9c3a2e;
+    --amber: #9a6a1e; /* muted amber, sets the internal-KB (RAG demo) block apart from web citations */
     --serif: 'Lora', Georgia, 'Times New Roman', serif;
     --sans: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
@@ -253,6 +254,27 @@
   .cat-rating-bar { height: 3px; background: var(--rule); border-radius: 2px; margin: 0.35rem 0 0.4rem; overflow: hidden; }
   .cat-rating-bar-fill { height: 100%; background: var(--maroon); }
   .cat-rating-reason { font-size: 0.78rem; color: var(--ink); margin: 0 0 0.3rem; line-height: 1.4; }
+  /* Web citations under a per-approach category rating. */
+  .citations { margin: 0.35rem 0 0; padding: 0; list-style: none; }
+  .citations li { font-size: 0.72rem; margin-top: 0.2rem; line-height: 1.3; }
+  .citations a { color: var(--maroon); text-decoration: none; border-bottom: 1px dotted var(--maroon); }
+  .citations a:hover { border-bottom-style: solid; }
+  /* Internal knowledge base (RAG demo) match — dashed top rule + muted amber accent
+     to set it apart from the web citations above. */
+  .rag-match { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px dashed var(--amber); }
+  .rag-label {
+    display: block;
+    font-size: 0.63rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--amber);
+    margin-bottom: 0.2rem;
+  }
+  .rag-list { margin: 0; padding: 0; list-style: none; }
+  .rag-list li { font-size: 0.72rem; margin-top: 0.2rem; color: var(--ink); cursor: help; line-height: 1.3; }
+  .rag-doc { color: var(--amber); border-bottom: 1px dotted var(--amber); }
+  .rag-score { color: var(--ink-soft); font-size: 0.68rem; margin-left: 0.35rem; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -416,6 +438,27 @@
       .map((meta) => {
         const data = categories[meta.id];
         if (!data) return "";
+        const citations = Array.isArray(data.citations) ? data.citations : [];
+        const citationsHtml = citations.length
+          ? `<ul class="citations">${citations
+              .map((c) => `<li><a href="${c.url}" target="_blank" rel="noopener">${c.title || c.url}</a></li>`)
+              .join("")}</ul>`
+          : "";
+        // Internal knowledge base (RAG demo) match, shown below the web citations
+        // in a muted amber block, with the retrieved snippet as a hover tooltip.
+        const internalKnowledge = Array.isArray(data.internalKnowledge) ? data.internalKnowledge : [];
+        const ragHtml = internalKnowledge.length
+          ? `<div class="rag-match">
+              <span class="rag-label">Internal knowledge base (demo data)</span>
+              <ul class="rag-list">${internalKnowledge
+                .map((m) => {
+                  const snippet = String(m.snippet || "").replace(/"/g, "&quot;");
+                  const pct = Math.round((Number(m.score) || 0) * 100);
+                  return `<li title="${snippet}"><span class="rag-doc">${m.title || "Untitled document"}</span><span class="rag-score">match ${pct}%</span></li>`;
+                })
+                .join("")}</ul>
+            </div>`
+          : "";
         return `<li class="cat-rating">
           <div class="cat-rating-head">
             <span class="cat-rating-name">${meta.swedish}</span>
@@ -424,6 +467,8 @@
           <div class="cat-rating-bar"><div class="cat-rating-bar-fill" style="width:${(data.score / 5) * 100}%"></div></div>
           <p class="cat-rating-reason">${data.reasoning || ""}</p>
           <span class="badge ${confidenceClass(data.confidence)}">${data.confidence || "unknown"} confidence</span>
+          ${citationsHtml}
+          ${ragHtml}
         </li>`;
       })
       .join("")}</ul>`;
